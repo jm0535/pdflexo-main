@@ -160,24 +160,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }
   // Display keyboard shortcuts and outline info on load
   useEffect(() => {
     if (!loading && !error) {
-      // Show keyboard shortcuts toast
-      toast.info(
-        "Keyboard shortcuts: Arrow keys (navigation), Ctrl/Cmd+= (zoom in), Ctrl/Cmd+- (zoom out), Ctrl/Cmd+0 (reset), Ctrl+F (fullscreen)",
-        { duration: 5000 }
-      );
-
       // Show document outline toast if outline is available
       if (outline.length > 0) {
-        setTimeout(() => {
-          toast.info("Document Outline Available", {
-            description: "Click the outline button in the toolbar to view the document structure",
-            action: {
-              label: "Open Outline",
-              onClick: () => toggleNavPane()
-            },
-            duration: 7000
-          });
-        }, 1000); // Delay slightly to not show immediately after keyboard shortcuts
+        toast.info("Document Outline Available", {
+          description: "Click the outline button in the toolbar to view the document structure",
+          action: {
+            label: "Open Outline",
+            onClick: () => toggleNavPane()
+          },
+          duration: 5000
+        });
       }
     }
   }, [loading, error, outline, toggleNavPane]);

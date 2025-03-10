@@ -60,6 +60,9 @@ const PDFPage: React.FC<PDFPageProps> = ({
     const container = containerRef.current;
     if (!container) return;
 
+    // Use a debounce mechanism to prevent too frequent updates
+    let animationFrameId: number | null = null;
+
     // Direct event handlers with passive: false to allow preventDefault
     const touchStartHandler = (e: TouchEvent) => {
       if (e.touches && e.touches.length === 1) {
@@ -81,8 +84,19 @@ const PDFPage: React.FC<PDFPageProps> = ({
         const newOffsetX = lastPanOffset.x + deltaX;
         const newOffsetY = lastPanOffset.y + deltaY;
 
-        setPanOffset({ x: newOffsetX, y: newOffsetY });
-        container.style.transform = `translate(${newOffsetX}px, ${newOffsetY}px)`;
+        // Cancel any pending animation frame
+        if (animationFrameId !== null) {
+          cancelAnimationFrame(animationFrameId);
+        }
+
+        // Use requestAnimationFrame to smooth out the transform updates
+        animationFrameId = requestAnimationFrame(() => {
+          setPanOffset({ x: newOffsetX, y: newOffsetY });
+          if (container) {
+            container.style.transform = `translate(${newOffsetX}px, ${newOffsetY}px)`;
+          }
+          animationFrameId = null;
+        });
       }
     };
 
@@ -91,6 +105,12 @@ const PDFPage: React.FC<PDFPageProps> = ({
         e.preventDefault();
         setIsPanning(false);
         setLastPanOffset(panOffset);
+
+        // Cancel any pending animation frame
+        if (animationFrameId !== null) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+        }
       }
     };
 
@@ -99,72 +119,80 @@ const PDFPage: React.FC<PDFPageProps> = ({
     container.addEventListener('touchmove', touchMoveHandler, { passive: false });
     container.addEventListener('touchend', touchEndHandler, { passive: false });
 
-    // Clean up event listeners
+    // Clean up event listeners and cancel any pending animation frame
     return () => {
       container.removeEventListener('touchstart', touchStartHandler);
       container.removeEventListener('touchmove', touchMoveHandler);
       container.removeEventListener('touchend', touchEndHandler);
+      
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
     };
   }, [containerRef, isPanning, startPanPosition, lastPanOffset, panOffset]);
 
   // Render the page
   useEffect(() => {
+    let isMounted = true;
     const renderPage = async () => {
-      if (!pdfDocument || !canvasRef.current) return;
-      
+      if (!pdfDocument || !canvasRef.current || !isMounted) return;
+
       try {
         const page = await pdfDocument.getPage(pageNumber);
 
-        // Create a viewport with higher resolution for mobile to ensure text clarity
-        const pixelRatio = window.devicePixelRatio || 1;
-        const viewport = page.getViewport({ scale: pageScale * pixelRatio });
+        // Use a fixed scale factor instead of device pixel ratio to prevent flickering
+        // on devices with fractional pixel ratios
+        const fixedScaleFactor = isMobile ? 1.5 : 1.5;
+        const viewport = page.getViewport({ scale: pageScale });
         
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d', { alpha: false });
-        
-        if (!context) return;
-        
-        // Set canvas dimensions to match the viewport (with device pixel ratio)
+
+        if (!context || !isMounted) return;
+
+        // Set canvas dimensions to match the viewport
         canvas.height = viewport.height;
         canvas.width = viewport.width;
         
-        // Set display size to match the desired scale (accounting for device pixel ratio)
-        canvas.style.width = `${viewport.width / pixelRatio}px`;
-        canvas.style.height = `${viewport.height / pixelRatio}px`;
+        // No need to set display size - let CSS handle this
+        // This prevents flickering caused by style changes
         
-        // Enhanced rendering context with text rendering options
+        // Simplified rendering context to prevent flickering
         const renderContext = {
           canvasContext: context,
           viewport: viewport,
-          enableWebGL: true,
-          renderInteractiveForms: true,
-          textLayer: true
+          // Disable WebGL as it can cause flickering on some devices
+          enableWebGL: false,
+          renderInteractiveForms: true
         };
 
         // Clear the canvas before rendering
         context.fillStyle = 'rgb(255, 255, 255)';
         context.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Render the page with enhanced settings
+        // Render the page with stable settings
         await page.render(renderContext).promise;
         
         // Setup annotation canvas with the same dimensions
-        if (annotationCanvasRef.current) {
+        if (annotationCanvasRef.current && isMounted) {
           const annotationCanvas = annotationCanvasRef.current;
           annotationCanvas.height = viewport.height;
           annotationCanvas.width = viewport.width;
-          annotationCanvas.style.width = `${viewport.width / pixelRatio}px`;
-          annotationCanvas.style.height = `${viewport.height / pixelRatio}px`;
         }
 
-        console.log(`Page ${pageNumber} rendered with scale ${pageScale} and pixel ratio ${pixelRatio}`);
+        console.log(`Page ${pageNumber} rendered with scale ${pageScale}`);
       } catch (err) {
         console.error('Error rendering page:', err);
       }
     };
 
     renderPage();
-  }, [pdfDocument, pageNumber, pageScale]);
+    
+    // Cleanup function to prevent rendering after unmount
+    return () => {
+      isMounted = false;
+    };
+  }, [pdfDocument, pageNumber, pageScale, isMobile]);
 
   // Handle panning start
   const handlePanStart = useCallback((clientX: number, clientY: number) => {
@@ -240,8 +268,8 @@ const PDFPage: React.FC<PDFPageProps> = ({
           className="pdf-container touch-none select-none" // Disable browser's default touch actions and text selection
           style={{
             touchAction: 'none', // Explicitly disable browser touch actions for better mobile support
-            willChange: 'transform', // Optimize for transform animations
-            transformOrigin: 'center center' // Set transform origin to center for better panning
+            transformOrigin: 'center center', // Set transform origin to center for better panning
+            // Remove willChange as it can cause flickering on some devices
           }}
         >
           <canvas

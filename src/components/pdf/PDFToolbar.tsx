@@ -7,6 +7,8 @@ import {
   Book, 
   Eraser, 
   Sparkles,
+  PanelLeftClose,
+  PanelLeft
 } from 'lucide-react';
 import PDFAnnotationToolbar, { AnnotationTool } from '@/components/PDFAnnotationToolbar';
 import {
@@ -52,6 +54,26 @@ const PDFToolbar: React.FC<PDFToolbarProps> = ({
         <div className="flex items-center space-x-1">
           {children}
           
+          {onToggleNavPane && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onToggleNavPane}
+                >
+                  {isNavPaneVisible ?
+                    <PanelLeftClose className="h-5 w-5 text-primary" /> :
+                    <PanelLeft className="h-5 w-5 text-primary" />
+                  }
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isNavPaneVisible ? 'Hide' : 'Show'} document outline</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -66,7 +88,7 @@ const PDFToolbar: React.FC<PDFToolbarProps> = ({
               <p>Toggle view mode ({viewMode === 'single' ? 'Single' : 'Dual'} page)</p>
             </TooltipContent>
           </Tooltip>
-          
+
           <PDFAnnotationToolbar
             currentTool={currentTool}
             onToolChange={onToolChange}

@@ -47,9 +47,9 @@ const PDFPage: React.FC<PDFPageProps> = ({
   // Calculate appropriate scale based on device size
   useEffect(() => {
     if (isSmallMobile) {
-      setPageScale(0.8);
+      setPageScale(1.0); // Increased from 0.8 to improve text visibility
     } else if (isMobile) {
-      setPageScale(1.0);
+      setPageScale(1.2); // Increased from 1.0 to improve text visibility
     } else {
       setPageScale(1.5);
     }
@@ -114,21 +114,38 @@ const PDFPage: React.FC<PDFPageProps> = ({
       
       try {
         const page = await pdfDocument.getPage(pageNumber);
-        const viewport = page.getViewport({ scale: pageScale });
+
+        // Create a viewport with higher resolution for mobile to ensure text clarity
+        const pixelRatio = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale: pageScale * pixelRatio });
         
         const canvas = canvasRef.current;
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext('2d', { alpha: false });
         
         if (!context) return;
         
+        // Set canvas dimensions to match the viewport (with device pixel ratio)
         canvas.height = viewport.height;
         canvas.width = viewport.width;
         
+        // Set display size to match the desired scale (accounting for device pixel ratio)
+        canvas.style.width = `${viewport.width / pixelRatio}px`;
+        canvas.style.height = `${viewport.height / pixelRatio}px`;
+        
+        // Enhanced rendering context with text rendering options
         const renderContext = {
           canvasContext: context,
           viewport: viewport,
+          enableWebGL: true,
+          renderInteractiveForms: true,
+          textLayer: true
         };
+
+        // Clear the canvas before rendering
+        context.fillStyle = 'rgb(255, 255, 255)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
         
+        // Render the page with enhanced settings
         await page.render(renderContext).promise;
         
         // Setup annotation canvas with the same dimensions
@@ -136,7 +153,11 @@ const PDFPage: React.FC<PDFPageProps> = ({
           const annotationCanvas = annotationCanvasRef.current;
           annotationCanvas.height = viewport.height;
           annotationCanvas.width = viewport.width;
+          annotationCanvas.style.width = `${viewport.width / pixelRatio}px`;
+          annotationCanvas.style.height = `${viewport.height / pixelRatio}px`;
         }
+
+        console.log(`Page ${pageNumber} rendered with scale ${pageScale} and pixel ratio ${pixelRatio}`);
       } catch (err) {
         console.error('Error rendering page:', err);
       }
@@ -217,7 +238,11 @@ const PDFPage: React.FC<PDFPageProps> = ({
         <div
           ref={containerRef}
           className="pdf-container touch-none select-none" // Disable browser's default touch actions and text selection
-          style={{ touchAction: 'none' }} // Explicitly disable browser touch actions for better mobile support
+          style={{
+            touchAction: 'none', // Explicitly disable browser touch actions for better mobile support
+            willChange: 'transform', // Optimize for transform animations
+            transformOrigin: 'center center' // Set transform origin to center for better panning
+          }}
         >
           <canvas
             ref={canvasRef}

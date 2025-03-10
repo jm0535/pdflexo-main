@@ -5,7 +5,7 @@ import { PDFOutlineItem, extractOutline } from '@/lib/pdfUtils/outlineUtils';
 
 export const usePDFOutline = (pdfDocument: pdfjsLib.PDFDocumentProxy | null) => {
   const [outline, setOutline] = useState<PDFOutlineItem[]>([]);
-  const [isNavPaneVisible, setIsNavPaneVisible] = useState(true);
+  const [isNavPaneVisible, setIsNavPaneVisible] = useState(false); // Start with nav pane hidden
   const [navPaneWidth, setNavPaneWidth] = useState(250); // Default width
   const [loading, setLoading] = useState(false);
 

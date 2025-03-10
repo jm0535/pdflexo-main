@@ -1,5 +1,5 @@
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { PDFDocument } from '@/lib/types';
 import Navigation from './Navigation';
 import SignatureCanvas from './SignatureCanvas';
@@ -17,6 +17,7 @@ import PDFPageContainer from './pdf/PDFPageContainer';
 import PDFNavigationPane from './pdf/PDFNavigationPane';
 import { setZoomLevel, getZoomLevel, toggleFullscreen } from '@/lib/pdfUtils/viewUtils';
 import { ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface PDFViewerProps {
   document: PDFDocument;
@@ -30,6 +31,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [zoomLevel, setZoomLevelState] = useState(getZoomLevel());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
   
   // Get the total pages from pdfDocument or fall back to document.totalPages
   const totalPages = pdfDocument?.numPages || document.totalPages;
@@ -95,32 +97,32 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }
     onPageChange(pageNumber);
   };
 
-  // Zoom control functions
-  const handleZoomIn = () => {
+  // Zoom control functions - wrapped in useCallback to avoid dependency issues
+  const handleZoomIn = useCallback(() => {
     const newZoom = Math.min(zoomLevel + 0.1, 2.0);
     setZoomLevel(newZoom);
     setZoomLevelState(newZoom);
     toast.success(`Zoomed in to ${Math.round(newZoom * 100)}%`);
-  };
+  }, [zoomLevel]);
 
-  const handleZoomOut = () => {
+  const handleZoomOut = useCallback(() => {
     const newZoom = Math.max(zoomLevel - 0.1, 0.3);
     setZoomLevel(newZoom);
     setZoomLevelState(newZoom);
     toast.success(`Zoomed out to ${Math.round(newZoom * 100)}%`);
-  };
+  }, [zoomLevel]);
 
-  const handleResetZoom = () => {
+  const handleResetZoom = useCallback(() => {
     setZoomLevel(1);
     setZoomLevelState(1);
     toast.success("Zoom reset to 100%");
-  };
+  }, []);
 
-  const handleToggleFullscreen = () => {
+  const handleToggleFullscreen = useCallback(() => {
     const isNowFullscreen = toggleFullscreen();
     setIsFullscreen(isNowFullscreen);
     toast.success(isNowFullscreen ? "Entered fullscreen mode" : "Exited fullscreen mode");
-  };
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -153,17 +155,32 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [zoomLevel, currentPage, isAnimating, viewMode]);
+  }, [zoomLevel, currentPage, isAnimating, viewMode, handlePrevPage, handleNextPage, handleZoomIn, handleZoomOut, handleResetZoom, handleToggleFullscreen]);
 
-  // Display keyboard shortcuts on load
+  // Display keyboard shortcuts and outline info on load
   useEffect(() => {
     if (!loading && !error) {
+      // Show keyboard shortcuts toast
       toast.info(
         "Keyboard shortcuts: Arrow keys (navigation), Ctrl/Cmd+= (zoom in), Ctrl/Cmd+- (zoom out), Ctrl/Cmd+0 (reset), Ctrl+F (fullscreen)",
         { duration: 5000 }
       );
+
+      // Show document outline toast if outline is available
+      if (outline.length > 0) {
+        setTimeout(() => {
+          toast.info("Document Outline Available", {
+            description: "Click the outline button in the toolbar to view the document structure",
+            action: {
+              label: "Open Outline",
+              onClick: () => toggleNavPane()
+            },
+            duration: 7000
+          });
+        }, 1000); // Delay slightly to not show immediately after keyboard shortcuts
+      }
     }
-  }, [loading, error]);
+  }, [loading, error, outline, toggleNavPane]);
 
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
@@ -210,16 +227,18 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }
       
       <div className="flex-1 overflow-hidden flex">
         {isNavPaneVisible && (
-          <PDFNavigationPane 
+          <PDFNavigationPane
             outline={outline}
             onNavigate={handleNavigateToPage}
             isVisible={isNavPaneVisible}
             width={navPaneWidth}
             onResize={handleResize}
+            currentPage={currentPage}
+            onClose={isMobile ? toggleNavPane : undefined}
           />
         )}
         
-        <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-900 flex justify-center items-start p-8">
+        <div className={`flex-1 overflow-auto bg-gray-100 dark:bg-gray-900 flex justify-center items-start ${isMobile ? 'p-2 sm:p-4' : 'p-8'}`}>
           <div ref={viewerRef}>
             <PDFLoadingState loading={loading} error={error} />
 

@@ -43,26 +43,26 @@ export const searchInDocument = (
 ): SearchResult[] => {
   const results: SearchResult[] = [];
   const normalizedQuery = normalizeText(searchQuery);
-  
+
   if (!normalizedQuery) {
     return results;
   }
-  
+
   pageTexts.forEach((text, index) => {
     if (!text) return; // Skip empty pages
-    
+
     const normalizedText = normalizeText(text);
     let position = normalizedText.indexOf(normalizedQuery);
-    
+
     while (position !== -1) {
       // Extract a snippet of text around the match with more context
       const contextSize = 60; // Increased context size for better readability
       const startSnippet = Math.max(0, position - contextSize);
       const endSnippet = Math.min(text.length, position + searchQuery.length + contextSize);
-      
+
       // Get the original text for the snippet (not normalized)
       const snippet = text.substring(startSnippet, endSnippet);
-      
+
       // Add ellipsis if we're not at the beginning or end of the text
       const formattedSnippet =
         (startSnippet > 0 ? '...' : '') +

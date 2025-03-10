@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="32" height="32" rx="4" fill="#2563EB"/>
+  
+  <!-- PDF Document Icon -->
+  <path d="M8 6C8 5.44772 8.44772 5 9 5H19L24 10V26C24 26.5523 23.5523 27 23 27H9C8.44772 27 8 26.5523 8 26V6Z" fill="white"/>
+  <path d="M19 5L24 10H19V5Z" fill="#D1D5DB"/>
+  
+  <!-- PDF Text -->
+  <path d="M12 15.5C12 14.6716 12.6716 14 13.5 14H18.5C19.3284 14 20 14.6716 20 15.5V15.5C20 16.3284 19.3284 17 18.5 17H13.5C12.6716 17 12 16.3284 12 15.5V15.5Z" fill="#2563EB"/>
+  <path d="M12 20.5C12 19.6716 12.6716 19 13.5 19H18.5C19.3284 19 20 19.6716 20 20.5V20.5C20 21.3284 19.3284 22 18.5 22H13.5C12.6716 22 12 21.3284 12 20.5V20.5Z" fill="#2563EB"/>
+</svg>

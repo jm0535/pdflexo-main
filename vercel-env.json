@@ -1,0 +1,37 @@
+{
+  "environments": [
+    {
+      "name": "Production",
+      "branch": "main",
+      "buildCommand": "npm run build:production",
+      "domains": ["pdflexo.yourdomain.com"],
+      "environment": {
+        "VITE_APP_ENV": "production",
+        "VITE_APP_BASE_URL": "https://pdflexo.yourdomain.com",
+        "VITE_APP_API_URL": "https://api.yourdomain.com"
+      }
+    },
+    {
+      "name": "Preview",
+      "branch": "preview",
+      "buildCommand": "npm run build:preview",
+      "domains": ["preview-pdflexo.yourdomain.com"],
+      "environment": {
+        "VITE_APP_ENV": "preview",
+        "VITE_APP_BASE_URL": "https://preview-pdflexo.yourdomain.com",
+        "VITE_APP_API_URL": "https://preview-api.yourdomain.com"
+      }
+    },
+    {
+      "name": "Development",
+      "branch": "development",
+      "buildCommand": "npm run build:dev",
+      "domains": ["dev-pdflexo.yourdomain.com"],
+      "environment": {
+        "VITE_APP_ENV": "development",
+        "VITE_APP_BASE_URL": "https://dev-pdflexo.yourdomain.com",
+        "VITE_APP_API_URL": "https://dev-api.yourdomain.com"
+      }
+    }
+  ]
+}

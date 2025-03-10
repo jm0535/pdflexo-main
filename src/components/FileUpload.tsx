@@ -9,11 +9,13 @@ import { pdfSessionStorage } from '@/services/PDFSessionStorage';
 // Configure the worker with a more secure approach
 // This avoids using template literals with variables in URLs which can be a security risk
 const pdfjsVersion = pdfjsLib.version;
-const pdfjsWorkerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + pdfjsVersion + '/pdf.worker.min.js';
+const pdfjsWorkerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.min.js`;
 
 // Set worker source only after component mounts to avoid SSR issues
 const initPdfWorker = () => {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc;
+  if (typeof window !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc;
+  }
 };
 
 interface FileUploadProps {
@@ -54,6 +56,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
     // Create a safe URL object
     let fileUrl: string;
     try {
+      if (typeof URL === 'undefined') {
+        throw new Error('URL API not available');
+      }
       fileUrl = URL.createObjectURL(file);
     } catch (error) {
       console.error("Error creating object URL:", error);
@@ -68,8 +73,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
       });
       
       // Get actual page count with timeout protection
+      const loadingTask = pdfjsLib.getDocument(fileUrl);
       const pdf = await Promise.race([
-        pdfjsLib.getDocument(fileUrl).promise,
+        loadingTask.promise,
         timeoutPromise
       ]) as pdfjsLib.PDFDocumentProxy;
       
@@ -95,7 +101,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
       toast.success("PDF loaded successfully");
     } catch (error) {
       // Revoke the URL if there's an error
-      URL.revokeObjectURL(fileUrl);
+      try {
+        if (typeof URL !== 'undefined' && fileUrl) {
+          URL.revokeObjectURL(fileUrl);
+        }
+      } catch (revokeError) {
+        console.error("Error revoking object URL:", revokeError);
+      }
       
       console.error("Error loading PDF:", error);
       if (error instanceof Error && error.message === 'PDF loading timeout') {

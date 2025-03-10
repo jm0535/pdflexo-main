@@ -26,12 +26,16 @@ interface PDFViewerProps {
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }) => {
+  // Use a ref to track component mounted state to prevent state updates after unmount
+  const isMountedRef = useRef(true);
   const { pdfDocument, loading, error } = usePDFDocument(document);
   const [showAIDialog, setShowAIDialog] = useState(false);
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [zoomLevel, setZoomLevelState] = useState(getZoomLevel());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
+  // Force a stable rendering mode for mobile devices to prevent flickering
+  const [forceStableRendering, setForceStableRendering] = useState(isMobile);
   
   // Get the total pages from pdfDocument or fall back to document.totalPages
   const totalPages = pdfDocument?.numPages || document.totalPages;
@@ -157,9 +161,23 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [zoomLevel, currentPage, isAnimating, viewMode, handlePrevPage, handleNextPage, handleZoomIn, handleZoomOut, handleResetZoom, handleToggleFullscreen]);
 
+  // Set up component mount tracking
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    // Force stable rendering mode for better performance and to prevent flickering
+    if (isMobile) {
+      setForceStableRendering(true);
+    }
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [isMobile]);
+
   // Display keyboard shortcuts and outline info on load
   useEffect(() => {
-    if (!loading && !error) {
+    if (!loading && !error && isMountedRef.current) {
       // Show document outline toast if outline is available
       if (outline.length > 0) {
         toast.info("Document Outline Available", {
@@ -174,8 +192,63 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ document, onClose, onPageChange }
     }
   }, [loading, error, outline, toggleNavPane]);
 
+  // Optimize PDF rendering by disabling animations during page transitions
+  // This helps prevent flickering during rendering
+  useEffect(() => {
+    const optimizePDFRendering = () => {
+      // Add a CSS class to the document body to disable animations during PDF rendering
+      // This is the window document, not the PDF document
+      window.document.body.classList.add('pdf-rendering-optimized');
+
+      // Remove the class after rendering is complete
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          window.document.body.classList.remove('pdf-rendering-optimized');
+        }
+      }, 500);
+
+      return () => {
+        clearTimeout(timeoutId);
+        window.document.body.classList.remove('pdf-rendering-optimized');
+      };
+    };
+
+    if (!loading && pdfDocument) {
+      return optimizePDFRendering();
+    }
+  }, [loading, pdfDocument, currentPage, isMountedRef]);
+
+  // Add CSS styles to the document head to optimize PDF rendering
+  useEffect(() => {
+    // Create a style element
+    const styleElement = window.document.createElement('style');
+    styleElement.textContent = `
+      .pdf-rendering-optimized * {
+        transition: none !important;
+        animation: none !important;
+      }
+      .pdf-container {
+        contain: strict;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        perspective: 1000px;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .pdf-page {
+        contain: content;
+        will-change: transform;
+      }
+    `;
+    window.document.head.appendChild(styleElement);
+
+    return () => {
+      window.document.head.removeChild(styleElement);
+    };
+  }, []);
+
   return (
-    <div className="relative w-full h-full flex flex-col overflow-hidden">
+    <div className="relative w-full h-full flex flex-col overflow-hidden pdf-container">
       <PDFToolbar 
         currentTool={currentTool}
         viewMode={viewMode}

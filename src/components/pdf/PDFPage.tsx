@@ -55,13 +55,15 @@ const PDFPage: React.FC<PDFPageProps> = ({
     }
   }, [isMobile, isSmallMobile]);
 
-  // Add event listeners for touch events directly to the container element
+  // Add event listeners for touch events with optimized handling to prevent flickering
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Use a debounce mechanism to prevent too frequent updates
+    // Use a throttling mechanism to limit updates and prevent flickering
     let animationFrameId: number | null = null;
+    let lastAnimationTime = 0;
+    const throttleInterval = 16; // ~60fps
 
     // Direct event handlers with passive: false to allow preventDefault
     const touchStartHandler = (e: TouchEvent) => {
@@ -75,9 +77,16 @@ const PDFPage: React.FC<PDFPageProps> = ({
     const touchMoveHandler = (e: TouchEvent) => {
       if (e.touches && e.touches.length === 1 && isPanning) {
         e.preventDefault();
+
+        // Throttle updates to prevent flickering
+        const now = performance.now();
+        if (now - lastAnimationTime < throttleInterval) {
+          return;
+        }
+
         const clientX = e.touches[0].clientX;
         const clientY = e.touches[0].clientY;
-        
+
         const deltaX = clientX - startPanPosition.x;
         const deltaY = clientY - startPanPosition.y;
 
@@ -89,14 +98,20 @@ const PDFPage: React.FC<PDFPageProps> = ({
           cancelAnimationFrame(animationFrameId);
         }
 
-        // Use requestAnimationFrame to smooth out the transform updates
+        // Use requestAnimationFrame with CSS transform for hardware acceleration
         animationFrameId = requestAnimationFrame(() => {
-          setPanOffset({ x: newOffsetX, y: newOffsetY });
+          // Apply transform directly to the DOM for better performance
+          // Skip React state updates during active panning to prevent flickering
           if (container) {
-            container.style.transform = `translate(${newOffsetX}px, ${newOffsetY}px)`;
+            // Use translate3d for hardware acceleration
+            container.style.transform = `translate3d(${newOffsetX}px, ${newOffsetY}px, 0)`;
           }
           animationFrameId = null;
+          lastAnimationTime = performance.now();
         });
+
+        // Only update React state at the end of panning to avoid re-renders
+        setPanOffset({ x: newOffsetX, y: newOffsetY });
       }
     };
 
@@ -131,68 +146,111 @@ const PDFPage: React.FC<PDFPageProps> = ({
     };
   }, [containerRef, isPanning, startPanPosition, lastPanOffset, panOffset]);
 
-  // Render the page
+  // Render the page with a stable approach to prevent flickering
   useEffect(() => {
     let isMounted = true;
+    let renderInProgress = false;
+
+    // Create a stable rendering function that won't cause flickering
     const renderPage = async () => {
-      if (!pdfDocument || !canvasRef.current || !isMounted) return;
+      // Prevent multiple concurrent rendering attempts
+      if (renderInProgress || !isMounted) return;
+      renderInProgress = true;
+      if (!pdfDocument || !canvasRef.current) {
+        renderInProgress = false;
+        return;
+      }
 
+      // Create an offscreen canvas for rendering to prevent visible flickering
+      const offscreenCanvas = document.createElement('canvas');
+      let page;
+      
       try {
-        const page = await pdfDocument.getPage(pageNumber);
-
-        // Use a fixed scale factor instead of device pixel ratio to prevent flickering
-        // on devices with fractional pixel ratios
-        const fixedScaleFactor = isMobile ? 1.5 : 1.5;
+        // Get the page object
+        page = await pdfDocument.getPage(pageNumber);
+        
+        // Create a viewport with a stable scale factor
         const viewport = page.getViewport({ scale: pageScale });
         
-        const canvas = canvasRef.current;
-        const context = canvas.getContext('2d', { alpha: false });
-
-        if (!context || !isMounted) return;
-
-        // Set canvas dimensions to match the viewport
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
+        // Set dimensions for the offscreen canvas
+        offscreenCanvas.width = viewport.width;
+        offscreenCanvas.height = viewport.height;
         
-        // No need to set display size - let CSS handle this
-        // This prevents flickering caused by style changes
-        
-        // Simplified rendering context to prevent flickering
+        // Get the rendering context
+        const offscreenContext = offscreenCanvas.getContext('2d', {
+          alpha: false,  // Disable alpha for better performance
+          willReadFrequently: false // Optimize for rendering
+        });
+
+        if (!offscreenContext) return;
+
+        // Clear the canvas with a white background
+        offscreenContext.fillStyle = 'rgb(255, 255, 255)';
+        offscreenContext.fillRect(0, 0, viewport.width, viewport.height);
+
+        // Create a stable rendering context
         const renderContext = {
-          canvasContext: context,
+          canvasContext: offscreenContext,
           viewport: viewport,
-          // Disable WebGL as it can cause flickering on some devices
-          enableWebGL: false,
-          renderInteractiveForms: true
+          enableWebGL: false, // Disable WebGL to prevent flickering
+          renderInteractiveForms: true,
+          intent: 'display' // Optimize for display quality
         };
 
-        // Clear the canvas before rendering
-        context.fillStyle = 'rgb(255, 255, 255)';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Render the page with stable settings
+        // Render to the offscreen canvas
         await page.render(renderContext).promise;
-        
-        // Setup annotation canvas with the same dimensions
-        if (annotationCanvasRef.current && isMounted) {
-          const annotationCanvas = annotationCanvasRef.current;
-          annotationCanvas.height = viewport.height;
-          annotationCanvas.width = viewport.width;
+
+        // Only update the visible canvas after rendering is complete
+        if (canvasRef.current) {
+          const visibleCanvas = canvasRef.current;
+          visibleCanvas.width = viewport.width;
+          visibleCanvas.height = viewport.height;
+          
+          const visibleContext = visibleCanvas.getContext('2d', { alpha: false });
+          if (visibleContext) {
+            // Copy from offscreen canvas to visible canvas in a single operation
+            visibleContext.drawImage(offscreenCanvas, 0, 0);
+
+            // Setup annotation canvas with the same dimensions
+            if (annotationCanvasRef.current) {
+              const annotationCanvas = annotationCanvasRef.current;
+              annotationCanvas.width = viewport.width;
+              annotationCanvas.height = viewport.height;
+            }
+          }
         }
 
-        console.log(`Page ${pageNumber} rendered with scale ${pageScale}`);
+        if (isMounted) {
+          console.log(`Page ${pageNumber} rendered stably with scale ${pageScale}`);
+        }
       } catch (err) {
         console.error('Error rendering page:', err);
+      } finally {
+        // Clean up resources
+        if (page) {
+          try {
+            // Explicitly clean up page resources
+            page.cleanup();
+          } catch (cleanupErr) {
+            console.error('Error during page cleanup:', cleanupErr);
+          }
+        }
+        renderInProgress = false;
       }
     };
 
-    renderPage();
+    // Use requestAnimationFrame to ensure rendering happens in the next frame
+    // This helps prevent visual flickering
+    const animationFrameId = requestAnimationFrame(() => {
+      renderPage();
+    });
     
-    // Cleanup function to prevent rendering after unmount
+    // Cleanup function
     return () => {
       isMounted = false;
+      cancelAnimationFrame(animationFrameId);
     };
-  }, [pdfDocument, pageNumber, pageScale, isMobile]);
+  }, [pdfDocument, pageNumber, pageScale]);
 
   // Handle panning start
   const handlePanStart = useCallback((clientX: number, clientY: number) => {
@@ -265,12 +323,8 @@ const PDFPage: React.FC<PDFPageProps> = ({
       >
         <div
           ref={containerRef}
-          className="pdf-container touch-none select-none" // Disable browser's default touch actions and text selection
-          style={{
-            touchAction: 'none', // Explicitly disable browser touch actions for better mobile support
-            transformOrigin: 'center center', // Set transform origin to center for better panning
-            // Remove willChange as it can cause flickering on some devices
-          }}
+          className="pdf-container touch-none select-none pdf-page" // Disable browser's default touch actions and text selection
+          style={{ touchAction: 'none' }} // Explicitly disable browser touch actions for better mobile support
         >
           <canvas
             ref={canvasRef}

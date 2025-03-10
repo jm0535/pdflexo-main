@@ -129,7 +129,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
       
       // Wait for first page to be ready
       await firstPagePromise;
-      
+
       const newDocument: PDFDocument = {
         file,
         url: fileUrl,

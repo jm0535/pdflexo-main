@@ -1,6 +1,7 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface PDFPageProps {
   pdfDocument: pdfjsLib.PDFDocumentProxy | null;
@@ -25,6 +26,20 @@ const PDFPage: React.FC<PDFPageProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const annotationCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [pageScale, setPageScale] = useState(1.5);
+  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isSmallMobile = useMediaQuery('(max-width: 480px)');
+
+  // Calculate appropriate scale based on device size
+  useEffect(() => {
+    if (isSmallMobile) {
+      setPageScale(0.8);
+    } else if (isMobile) {
+      setPageScale(1.0);
+    } else {
+      setPageScale(1.5);
+    }
+  }, [isMobile, isSmallMobile]);
 
   // Render the page
   useEffect(() => {
@@ -33,7 +48,7 @@ const PDFPage: React.FC<PDFPageProps> = ({
       
       try {
         const page = await pdfDocument.getPage(pageNumber);
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({ scale: pageScale });
         
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
@@ -62,28 +77,90 @@ const PDFPage: React.FC<PDFPageProps> = ({
     };
 
     renderPage();
-  }, [pdfDocument, pageNumber]);
+  }, [pdfDocument, pageNumber, pageScale]);
 
   return (
     <div 
-      className={`pdf-page bg-white rounded-lg shadow-lg p-4 overflow-hidden ${
+      className={`pdf-page bg-white rounded-lg shadow-lg ${isMobile ? 'p-2' : 'p-4'} overflow-hidden ${
         isAnimating ? direction === 'next' ? 'animate-page-turn' : 'animate-page-turn-reverse' : ''
       }`}
       data-page={pageNumber}
     >
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-medium">Page {pageNumber} of {pdfDocument?.numPages || '?'}</h2>
-        <p className="text-gray-500 truncate max-w-xs">{documentName}</p>
+      <div className={`flex justify-between items-center ${isMobile ? 'mb-2' : 'mb-4'}`}>
+        <h2 className={`${isMobile ? 'text-base' : 'text-xl'} font-medium`}>Page {pageNumber} of {pdfDocument?.numPages || '?'}</h2>
+        <p className="text-gray-500 truncate max-w-xs text-sm">{documentName}</p>
       </div>
       <div 
         className="flex justify-center relative" 
         onMouseUp={(e) => onMouseUp(e, pageOffset)}
+        onTouchEnd={(e) => {
+          // Handle touch end for annotations without creating a MouseEvent
+          // Instead, extract the coordinates and call the handler directly
+          if (e.changedTouches && e.changedTouches.length > 0) {
+            const touch = e.changedTouches[0];
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            // Create a minimal synthetic event with required properties
+            const syntheticEvent = {
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+              target: e.target,
+              currentTarget: e.currentTarget,
+              preventDefault: () => {},
+              stopPropagation: () => {},
+              // Add missing properties required by MouseEvent
+              altKey: false,
+              button: 0,
+              buttons: 0,
+              ctrlKey: false,
+              metaKey: false,
+              shiftKey: false,
+              type: 'mouseup'
+            } as unknown as React.MouseEvent;
+            
+            onMouseUp(syntheticEvent, pageOffset);
+          }
+        }}
         data-page={pageNumber}
       >
         <canvas 
           ref={canvasRef} 
           onClick={(e) => onCanvasClick(e, pageOffset)}
-          className="cursor-crosshair"
+          onTouchStart={(e) => {
+            // Prevent default to avoid zooming on double-tap on mobile
+            e.preventDefault();
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            // Handle touch end for canvas clicks without creating a MouseEvent
+            if (e.changedTouches && e.changedTouches.length > 0) {
+              const touch = e.changedTouches[0];
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = touch.clientX - rect.left;
+              const y = touch.clientY - rect.top;
+              // Create a minimal synthetic event with required properties
+              const syntheticEvent = {
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                target: e.target,
+                currentTarget: e.currentTarget,
+                preventDefault: () => {},
+                stopPropagation: () => {},
+                // Add missing properties required by MouseEvent
+                altKey: false,
+                button: 0,
+                buttons: 0,
+                ctrlKey: false,
+                metaKey: false,
+                shiftKey: false,
+                type: 'click'
+              } as unknown as React.MouseEvent<HTMLCanvasElement>;
+              
+              onCanvasClick(syntheticEvent, pageOffset);
+            }
+          }}
+          className="cursor-crosshair max-w-full"
           data-page={pageNumber}
         />
         <canvas 

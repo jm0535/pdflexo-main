@@ -1,10 +1,10 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Upload, Loader2 } from 'lucide-react';
 import { PDFDocument } from '@/lib/types';
 import { toast } from "sonner";
 import * as pdfjsLib from 'pdfjs-dist';
 import { pdfSessionStorage } from '@/services/PDFSessionStorage';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 // Configure the worker with a more secure approach
 // This avoids using template literals with variables in URLs which can be a security risk
@@ -32,6 +32,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
   const [loading, setLoading] = useState(false);
   const loadingTaskRef = useRef<pdfjsLib.PDFDocumentLoadingTask | null>(null);
   const renderStartTime = useRef<number>(0);
+  const isDesktop = useMediaQuery('(min-width: 769px)');
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(true);
@@ -47,10 +48,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
     renderStartTime.current = performance.now();
     toast.info("Processing PDF file...");
 
+    // Add optimization class to prevent flickering during processing
+    document.body.classList.add('pdf-rendering-optimized');
+
     // Validate file type with more robust checking
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
       toast.error("Please upload a valid PDF file");
       setLoading(false);
+      document.body.classList.remove('pdf-rendering-optimized');
       return;
     }
     
@@ -59,6 +64,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
     if (fileSizeInMB > maxFileSizeMB) {
       toast.error(`File size exceeds the maximum limit of ${maxFileSizeMB}MB`);
       setLoading(false);
+      document.body.classList.remove('pdf-rendering-optimized');
       return;
     }
     
@@ -73,6 +79,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
       console.error("Error creating object URL:", error);
       toast.error("Failed to process the file");
       setLoading(false);
+      document.body.classList.remove('pdf-rendering-optimized');
       return;
     }
 
@@ -84,7 +91,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
 
       // Set a timeout to prevent hanging on corrupted PDFs
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('PDF loading timeout')), 10000);
+        setTimeout(() => reject(new Error('PDF loading timeout')), 15000); // Increased timeout for larger files
       });
 
       // Create a new loading task with optimized parameters
@@ -96,7 +103,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
         disableAutoFetch: false, // Enable auto-fetching for faster rendering
         disableStream: false, // Enable streaming for progressive loading
         disableRange: false, // Enable range requests for faster loading
-        withCredentials: false
+        withCredentials: false,
+        enableXfa: true, // Enable XFA form support
+        useSystemFonts: true // Use system fonts when available
       });
 
       loadingTaskRef.current = loadingTask;
@@ -105,8 +114,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
       loadingTask.onProgress = ({ loaded, total }) => {
         if (total > 0) {
           const progress = Math.round((loaded / total) * 100);
-          if (progress % 25 === 0) { // Only update at 25%, 50%, 75%, 100%
-            console.log(`Loading PDF: ${progress}%`);
+          if (progress % 10 === 0) { // Update more frequently (every 10%)
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`Loading PDF: ${progress}%`);
+            }
+            // Optional: Update UI with progress
           }
         }
       };
@@ -143,12 +155,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
 
       // Calculate and log performance metrics
       const loadTime = Math.round(performance.now() - renderStartTime.current);
-      console.log(`PDF processed in ${loadTime}ms`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`PDF processed in ${loadTime}ms`);
+      }
 
       // Notify user and pass document to parent component
       onFileLoaded(newDocument);
       toast.success(`PDF loaded successfully (${loadTime}ms)`);
-      setLoading(false);
+
+      // Use a slight delay before removing loading state to ensure smooth transition
+      setTimeout(() => {
+        setLoading(false);
+        document.body.classList.remove('pdf-rendering-optimized');
+      }, 300); // Increased delay for smoother transition
     } catch (error) {
       // Revoke the URL if there's an error
       try {
@@ -166,6 +185,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
         toast.error("Failed to load PDF. Please ensure it's a valid PDF file.");
       }
       setLoading(false);
+      document.body.classList.remove('pdf-rendering-optimized');
     }
   }, [onFileLoaded, maxFileSizeMB]);
   
@@ -215,17 +235,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
   return (
     <div className="w-full flex flex-col items-center justify-center p-10 animate-fade-in">
       <div
-        className={`file-drop-area w-full max-w-lg flex flex-col items-center ${dragging ? 'active' : ''}`}
+        className={`file-drop-area w-full ${isDesktop ? 'max-w-2xl' : 'max-w-lg'} flex flex-col items-center ${dragging ? 'active' : ''} ${isDesktop ? 'p-8' : 'p-4'}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
         {loading ? (
-          <Loader2 className="w-16 h-16 mb-4 text-blue-500 animate-spin" />
+          <Loader2 className={`${isDesktop ? 'w-20 h-20' : 'w-16 h-16'} mb-4 text-blue-500 animate-spin`} />
         ) : (
-          <Upload className={`w-16 h-16 mb-4 ${dragging ? 'text-blue-500' : 'text-gray-400'} animate-float`} />
+          <Upload className={`${isDesktop ? 'w-20 h-20' : 'w-16 h-16'} mb-4 ${dragging ? 'text-blue-500' : 'text-gray-400'} animate-float`} />
         )}
-        <h3 className="text-xl font-medium mb-2">
+        <h3 className={`${isDesktop ? 'text-2xl' : 'text-xl'} font-medium mb-2`}>
           {loading ? 'Processing PDF...' :
            dragging ? 'Drop your PDF here' : 'Drag & Drop your PDF here'}
         </h3>
@@ -235,7 +255,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 1
         </p>
         <label
           htmlFor="file-upload"
-          className={`px-6 py-3 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 cursor-pointer'} text-white rounded-lg shadow-md transition-colors`}
+          className={`${isDesktop ? 'px-8 py-4 text-lg' : 'px-6 py-3'} ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 cursor-pointer'} text-white rounded-lg shadow-md transition-colors`}
         >
           {loading ? 'Processing...' : 'Browse Files'}
         </label>

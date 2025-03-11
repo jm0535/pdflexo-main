@@ -1,10 +1,10 @@
-
 import React, { useRef, useState, useEffect } from 'react';
 import { ChevronRight, X, FileText, Menu } from 'lucide-react';
 import { PDFOutlineItem } from '@/lib/pdfUtils/outlineUtils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import './PDFStyles.css';
 
 interface PDFNavigationPaneProps {
   outline: PDFOutlineItem[];
@@ -12,6 +12,8 @@ interface PDFNavigationPaneProps {
   isVisible: boolean;
   width: number;
   onResize: (newWidth: number) => void;
+  currentPage?: number;
+  onClose?: () => void;
 }
 
 const OutlineItem: React.FC<{
@@ -38,16 +40,9 @@ const OutlineItem: React.FC<{
   
   return (
     <div className="text-sm">
-      <div 
-        className={`py-1.5 px-2 flex items-center rounded-md hover:bg-muted/80 dark:hover:bg-muted/60 cursor-pointer transition-colors duration-150 ${
-          level === 0 ? 'font-medium' : ''
-        } ${
-          isCurrentPage ? 'bg-primary/10 text-primary dark:bg-primary/20' : ''
-        } ${
-          isMobile ? 'py-2.5' : ''
-        }`}
+      <div
+        className={`outline-item outline-item-level-${level} ${level === 0 ? 'font-medium' : ''} ${isCurrentPage ? 'is-current-page' : ''} ${isMobile ? 'mobile' : ''}`}
         onClick={handleClick}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
       >
         {hasChildren && (
           <span
@@ -89,16 +84,6 @@ const OutlineItem: React.FC<{
   );
 };
 
-interface PDFNavigationPaneProps {
-  outline: PDFOutlineItem[];
-  onNavigate: (pageNumber: number) => void;
-  isVisible: boolean;
-  width: number;
-  onResize: (newWidth: number) => void;
-  currentPage?: number;
-  onClose?: () => void;
-}
-
 const PDFNavigationPane: React.FC<PDFNavigationPaneProps> = ({
   outline,
   onNavigate,
@@ -116,14 +101,19 @@ const PDFNavigationPane: React.FC<PDFNavigationPaneProps> = ({
   const isMobile = useMediaQuery('(max-width: 768px)');
   const isSmallMobile = useMediaQuery('(max-width: 480px)');
 
-  // Adjust width for mobile devices
+  // Adjust width for different devices
   useEffect(() => {
-    if (isMobile && isVisible) {
-      // Use a percentage of screen width on mobile
-      const mobileWidth = isSmallMobile ?
-        Math.min(window.innerWidth * 0.85, 300) :
-        Math.min(window.innerWidth * 0.7, 350);
-      onResize(mobileWidth);
+    if (isVisible) {
+      if (isMobile) {
+        // Use a percentage of screen width on mobile
+        const mobileWidth = isSmallMobile ?
+          Math.min(window.innerWidth * 0.85, 300) :
+          Math.min(window.innerWidth * 0.7, 350);
+        onResize(mobileWidth);
+      } else {
+        // Use a wider panel for desktop
+        onResize(Math.min(window.innerWidth * 0.25, 380));
+      }
     }
   }, [isMobile, isSmallMobile, isVisible, onResize]);
 
@@ -147,8 +137,8 @@ const PDFNavigationPane: React.FC<PDFNavigationPaneProps> = ({
       const touchX = e.touches[0].clientX;
       const newWidth = initialWidth + (touchX - touchStartX);
       // Clamp width between 180px and 500px, or smaller on mobile
-      const minWidth = isMobile ? 250 : 180;
-      const maxWidth = isMobile ? 350 : 500;
+      const minWidth = isMobile ? 250 : 220;
+      const maxWidth = isMobile ? 350 : 600;
       const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
       onResize(clampedWidth);
     }
@@ -193,10 +183,13 @@ const PDFNavigationPane: React.FC<PDFNavigationPaneProps> = ({
     return null;
   }
 
+  // Round the width to the nearest 20px for CSS class naming
+  const roundedWidth = Math.round(width / 20) * 20;
+  const widthClass = `width-${roundedWidth}`;
+
   return (
     <div
-      className={`relative h-full flex-shrink-0 bg-background dark:bg-gray-950 shadow-lg ${isMobile ? 'fixed z-40 left-0 top-0 bottom-0' : ''}`}
-      style={{ width: `${width}px` }}
+      className={`pdf-nav-pane ${isMobile ? 'fixed' : ''} ${widthClass}`}
     >
       <div className="border-r border-border h-full flex flex-col">
         <div className="p-3 border-b border-border flex justify-between items-center">
@@ -234,25 +227,21 @@ const PDFNavigationPane: React.FC<PDFNavigationPaneProps> = ({
       {!isMobile && (
         <div
           ref={resizerRef}
-          className="absolute top-0 right-0 w-1 h-full bg-border hover:bg-primary/50 cursor-col-resize group"
+          className="resizer"
           onMouseDown={startResizing}
           aria-hidden="true"
-        >
-          <div className="absolute top-1/2 right-0 transform -translate-y-1/2 h-8 w-2 rounded-sm opacity-0 group-hover:opacity-100 bg-primary transition-opacity" />
-        </div>
+        />
       )}
       
       {/* Touch resizer - mobile only */}
       {isMobile && (
         <div
-          className="absolute top-0 right-0 w-4 h-full bg-transparent touch-manipulation"
+          className="resizer"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           aria-hidden="true"
-        >
-          <div className="absolute top-1/2 right-0 transform -translate-y-1/2 h-20 w-1 rounded-full opacity-30 bg-primary" />
-        </div>
+        />
       )}
     </div>
   );

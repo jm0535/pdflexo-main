@@ -1,7 +1,7 @@
-
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import './PDFStyles.css';
 
 // Add passive: false to event listener options to enable preventDefault() on touch events
 declare global {
@@ -19,7 +19,14 @@ interface PDFPageProps {
   isAnimating: boolean;
   direction: 'next' | 'prev';
   pageOffset?: number;
+  onPageRendered?: () => void;
 }
+
+// A4 dimensions in points (72 points = 1 inch)
+// A4 is 210mm x 297mm or 8.27in x 11.69in
+// In points: 595 x 842
+const A4_WIDTH_PT = 595;
+const A4_HEIGHT_PT = 842;
 
 const PDFPage: React.FC<PDFPageProps> = ({
   pdfDocument,
@@ -30,13 +37,16 @@ const PDFPage: React.FC<PDFPageProps> = ({
   isAnimating,
   direction,
   pageOffset = 0,
+  onPageRendered
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
   const annotationCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pageScale, setPageScale] = useState(1.5);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const isSmallMobile = useMediaQuery('(max-width: 480px)');
+  const [isRendered, setIsRendered] = useState(false);
 
   // State for panning functionality
   const [isPanning, setIsPanning] = useState(false);
@@ -44,330 +54,323 @@ const PDFPage: React.FC<PDFPageProps> = ({
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [lastPanOffset, setLastPanOffset] = useState({ x: 0, y: 0 });
 
-  // Calculate appropriate scale based on device size
-  useEffect(() => {
-    if (isSmallMobile) {
-      setPageScale(1.0); // Increased from 0.8 to improve text visibility
-    } else if (isMobile) {
-      setPageScale(1.2); // Increased from 1.0 to improve text visibility
-    } else {
-      setPageScale(1.5);
-    }
-  }, [isMobile, isSmallMobile]);
-
-  // Add event listeners for touch events with optimized handling to prevent flickering
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    // Use a throttling mechanism to limit updates and prevent flickering
-    let animationFrameId: number | null = null;
-    let lastAnimationTime = 0;
-    const throttleInterval = 16; // ~60fps
-
-    // Direct event handlers with passive: false to allow preventDefault
-    const touchStartHandler = (e: TouchEvent) => {
-      if (e.touches && e.touches.length === 1) {
-        e.preventDefault();
-        setIsPanning(true);
-        setStartPanPosition({ x: e.touches[0].clientX, y: e.touches[0].clientY });
-      }
-    };
-
-    const touchMoveHandler = (e: TouchEvent) => {
-      if (e.touches && e.touches.length === 1 && isPanning) {
-        e.preventDefault();
-
-        // Throttle updates to prevent flickering
-        const now = performance.now();
-        if (now - lastAnimationTime < throttleInterval) {
-          return;
-        }
-
-        const clientX = e.touches[0].clientX;
-        const clientY = e.touches[0].clientY;
-
-        const deltaX = clientX - startPanPosition.x;
-        const deltaY = clientY - startPanPosition.y;
-
-        const newOffsetX = lastPanOffset.x + deltaX;
-        const newOffsetY = lastPanOffset.y + deltaY;
-
-        // Cancel any pending animation frame
-        if (animationFrameId !== null) {
-          cancelAnimationFrame(animationFrameId);
-        }
-
-        // Use requestAnimationFrame with CSS transform for hardware acceleration
-        animationFrameId = requestAnimationFrame(() => {
-          // Apply transform directly to the DOM for better performance
-          // Skip React state updates during active panning to prevent flickering
-          if (container) {
-            // Use translate3d for hardware acceleration
-            container.style.transform = `translate3d(${newOffsetX}px, ${newOffsetY}px, 0)`;
-          }
-          animationFrameId = null;
-          lastAnimationTime = performance.now();
-        });
-
-        // Only update React state at the end of panning to avoid re-renders
-        setPanOffset({ x: newOffsetX, y: newOffsetY });
-      }
-    };
-
-    const touchEndHandler = (e: TouchEvent) => {
-      if (isPanning) {
-        e.preventDefault();
-        setIsPanning(false);
-        setLastPanOffset(panOffset);
-
-        // Cancel any pending animation frame
-        if (animationFrameId !== null) {
-          cancelAnimationFrame(animationFrameId);
-          animationFrameId = null;
-        }
-      }
-    };
-
-    // Add event listeners with passive: false to allow preventDefault
-    container.addEventListener('touchstart', touchStartHandler, { passive: false });
-    container.addEventListener('touchmove', touchMoveHandler, { passive: false });
-    container.addEventListener('touchend', touchEndHandler, { passive: false });
-
-    // Clean up event listeners and cancel any pending animation frame
-    return () => {
-      container.removeEventListener('touchstart', touchStartHandler);
-      container.removeEventListener('touchmove', touchMoveHandler);
-      container.removeEventListener('touchend', touchEndHandler);
-      
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId);
-      }
-    };
-  }, [containerRef, isPanning, startPanPosition, lastPanOffset, panOffset]);
-
-  // Render the page with a stable approach to prevent flickering
-  useEffect(() => {
-    let isMounted = true;
-    let renderInProgress = false;
-
-    // Create a stable rendering function that won't cause flickering
-    const renderPage = async () => {
-      // Prevent multiple concurrent rendering attempts
-      if (renderInProgress || !isMounted) return;
-      renderInProgress = true;
-      if (!pdfDocument || !canvasRef.current) {
-        renderInProgress = false;
-        return;
-      }
-
-      // Create an offscreen canvas for rendering to prevent visible flickering
-      const offscreenCanvas = document.createElement('canvas');
-      let page;
-      
-      try {
-        // Get the page object
-        page = await pdfDocument.getPage(pageNumber);
-        
-        // Create a viewport with a stable scale factor
-        const viewport = page.getViewport({ scale: pageScale });
-        
-        // Set dimensions for the offscreen canvas
-        offscreenCanvas.width = viewport.width;
-        offscreenCanvas.height = viewport.height;
-        
-        // Get the rendering context
-        const offscreenContext = offscreenCanvas.getContext('2d', {
-          alpha: false,  // Disable alpha for better performance
-          willReadFrequently: false // Optimize for rendering
-        });
-
-        if (!offscreenContext) return;
-
-        // Clear the canvas with a white background
-        offscreenContext.fillStyle = 'rgb(255, 255, 255)';
-        offscreenContext.fillRect(0, 0, viewport.width, viewport.height);
-
-        // Create a stable rendering context
-        const renderContext = {
-          canvasContext: offscreenContext,
-          viewport: viewport,
-          enableWebGL: false, // Disable WebGL to prevent flickering
-          renderInteractiveForms: true,
-          intent: 'display' // Optimize for display quality
-        };
-
-        // Render to the offscreen canvas
-        await page.render(renderContext).promise;
-
-        // Only update the visible canvas after rendering is complete
-        if (canvasRef.current) {
-          const visibleCanvas = canvasRef.current;
-          visibleCanvas.width = viewport.width;
-          visibleCanvas.height = viewport.height;
-          
-          const visibleContext = visibleCanvas.getContext('2d', { alpha: false });
-          if (visibleContext) {
-            // Copy from offscreen canvas to visible canvas in a single operation
-            visibleContext.drawImage(offscreenCanvas, 0, 0);
-
-            // Setup annotation canvas with the same dimensions
-            if (annotationCanvasRef.current) {
-              const annotationCanvas = annotationCanvasRef.current;
-              annotationCanvas.width = viewport.width;
-              annotationCanvas.height = viewport.height;
-            }
-          }
-        }
-
-        if (isMounted) {
-          console.log(`Page ${pageNumber} rendered stably with scale ${pageScale}`);
-        }
-      } catch (err) {
-        console.error('Error rendering page:', err);
-      } finally {
-        // Clean up resources
-        if (page) {
-          try {
-            // Explicitly clean up page resources
-            page.cleanup();
-          } catch (cleanupErr) {
-            console.error('Error during page cleanup:', cleanupErr);
-          }
-        }
-        renderInProgress = false;
-      }
-    };
-
-    // Use requestAnimationFrame to ensure rendering happens in the next frame
-    // This helps prevent visual flickering
-    const animationFrameId = requestAnimationFrame(() => {
-      renderPage();
-    });
-    
-    // Cleanup function
-    return () => {
-      isMounted = false;
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [pdfDocument, pageNumber, pageScale]);
-
   // Handle panning start
-  const handlePanStart = useCallback((clientX: number, clientY: number) => {
+  const handlePanStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (isAnimating) return;
+
+    let clientX: number;
+    let clientY: number;
+
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
     setIsPanning(true);
     setStartPanPosition({ x: clientX, y: clientY });
-  }, []);
+  }, [isAnimating]);
 
-  // Handle panning movement
-  const handlePanMove = useCallback((clientX: number, clientY: number) => {
-    if (isPanning && containerRef.current) {
-      const deltaX = clientX - startPanPosition.x;
-      const deltaY = clientY - startPanPosition.y;
+  const handleTouchPanStart = useCallback((e: React.TouchEvent) => {
+    handlePanStart(e);
+  }, [handlePanStart]);
 
-      const newOffsetX = lastPanOffset.x + deltaX;
-      const newOffsetY = lastPanOffset.y + deltaY;
+  // Handle panning move
+  const handlePanMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!isPanning) return;
 
-      setPanOffset({ x: newOffsetX, y: newOffsetY });
+    e.preventDefault();
 
-      // Apply the transform directly for smoother performance
-      containerRef.current.style.transform = `translate(${newOffsetX}px, ${newOffsetY}px)`;
+    let clientX: number;
+    let clientY: number;
+
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
     }
+
+    const deltaX = clientX - startPanPosition.x;
+    const deltaY = clientY - startPanPosition.y;
+
+    setPanOffset({
+      x: lastPanOffset.x + deltaX,
+      y: lastPanOffset.y + deltaY
+    });
   }, [isPanning, startPanPosition, lastPanOffset]);
+
+  const handleTouchPanMove = useCallback((e: TouchEvent) => {
+    handlePanMove(e);
+  }, [handlePanMove]);
 
   // Handle panning end
   const handlePanEnd = useCallback(() => {
-    if (isPanning) {
-      setIsPanning(false);
-      setLastPanOffset(panOffset);
-    }
+    if (!isPanning) return;
+    setIsPanning(false);
+    setLastPanOffset(panOffset);
   }, [isPanning, panOffset]);
 
+  const handleTouchPanEnd = useCallback(() => {
+    handlePanEnd();
+  }, [handlePanEnd]);
+
+  // Add event listeners for panning
+  useEffect(() => {
+    if (containerRef.current) {
+      const container = containerRef.current;
+
+      const handleMouseMove = (e: MouseEvent) => handlePanMove(e);
+      const handleTouchMove = (e: TouchEvent) => handlePanMove(e);
+      const handleMouseUp = () => handlePanEnd();
+      const handleTouchEnd = () => handlePanEnd();
+
+      if (isPanning) {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('touchend', handleTouchEnd);
+      }
+
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('touchmove', handleTouchMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('touchend', handleTouchEnd);
+      };
+    }
+  }, [isPanning, handlePanMove, handlePanEnd]);
+
+  // Update transform CSS variable when panOffset changes
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.style.setProperty('--transform-value', `translate(${panOffset.x}px, ${panOffset.y}px)`);
+    }
+  }, [panOffset]);
+
+  // Render PDF page
+  useEffect(() => {
+    let isMounted = true;
+    let renderTask: pdfjsLib.RenderTask | null = null;
+    let textLayerTask: { promise: Promise<void>; cancel?: () => void } | null = null;
+
+    const renderPage = async () => {
+      if (!pdfDocument || !canvasRef.current || !isMounted) {
+        console.log('Cannot render page - missing document or canvas');
+        return;
+      }
+
+      try {
+        console.log(`Rendering page ${pageNumber} of document`);
+        // Get the page object
+        const page = await pdfDocument.getPage(pageNumber);
+        console.log(`Page ${pageNumber} retrieved successfully`);
+
+        // Get device pixel ratio for high-DPI rendering
+        const devicePixelRatio = window.devicePixelRatio || 1;
+
+        // Calculate scale to fit A4 width
+        const containerWidth = containerRef.current?.clientWidth || window.innerWidth * 0.8;
+        const scaleToFitWidth = containerWidth / A4_WIDTH_PT;
+
+        // Use a scale that maintains the A4 aspect ratio but increase it for better quality
+        const baseScale = scaleToFitWidth * 1.5; // Increase scale for better quality
+
+        // Create a viewport with the calculated scale
+        const viewport = page.getViewport({ scale: baseScale });
+        console.log(`Viewport created with width: ${viewport.width}, height: ${viewport.height}`);
+
+        // Get the canvas element
+        const canvas = canvasRef.current;
+
+        // Set canvas dimensions to match viewport with pixel ratio for high-DPI rendering
+        const scaledWidth = Math.floor(viewport.width * devicePixelRatio);
+        const scaledHeight = Math.floor(viewport.height * devicePixelRatio);
+
+        // Reset the canvas
+        canvas.width = scaledWidth;
+        canvas.height = scaledHeight;
+
+        // Set display size (CSS pixels)
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        // Force canvas to be visible with important styles
+        canvas.style.display = 'block';
+        canvas.style.visibility = 'visible';
+        canvas.style.opacity = '1';
+        canvas.style.backgroundColor = '#FFFFFF';
+
+        // Get the 2D rendering context
+        const context = canvas.getContext('2d', {
+          alpha: false,
+          willReadFrequently: false
+        });
+
+        if (!context) {
+          throw new Error('Could not get canvas context');
+        }
+
+        // Clear the canvas with white background
+        context.fillStyle = '#FFFFFF';
+        context.fillRect(0, 0, scaledWidth, scaledHeight);
+
+        // Scale context to account for device pixel ratio
+        context.scale(devicePixelRatio, devicePixelRatio);
+
+        // Create rendering context with specific options for better compatibility
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+          enableWebGL: false,
+          renderInteractiveForms: true,
+          intent: 'display'
+        };
+
+        // Start rendering
+        console.log('Starting page render');
+        renderTask = page.render(renderContext);
+
+        // Wait for rendering to complete
+        await renderTask.promise;
+        console.log('Page render completed successfully');
+
+        // Set up text layer if it exists
+        if (textLayerRef.current) {
+          // Clear previous text layer content
+          textLayerRef.current.innerHTML = '';
+
+          // Set text layer dimensions
+          textLayerRef.current.style.width = `${Math.floor(viewport.width)}px`;
+          textLayerRef.current.style.height = `${Math.floor(viewport.height)}px`;
+
+          // Get text content
+          const textContent = await page.getTextContent();
+
+          // Create text layer using PDF.js text layer builder
+          try {
+            const { renderTextLayer } = await import('pdfjs-dist/web/pdf_viewer');
+            
+            // Render the text layer using the official API
+            renderTextLayer({
+              textContent: textContent,
+              container: textLayerRef.current,
+              viewport: viewport,
+              textDivs: []
+            });
+            
+            textLayerTask = { promise: Promise.resolve() };
+          } catch (err) {
+            console.error('Error creating text layer:', err);
+            textLayerTask = { promise: Promise.resolve() };
+          }
+        }
+
+        // Set up annotation canvas if it exists
+        if (annotationCanvasRef.current) {
+          const annotationCanvas = annotationCanvasRef.current;
+          annotationCanvas.width = scaledWidth;
+          annotationCanvas.height = scaledHeight;
+          annotationCanvas.style.width = `${Math.floor(viewport.width)}px`;
+          annotationCanvas.style.height = `${Math.floor(viewport.height)}px`;
+        }
+
+        console.log(`Page ${pageNumber} rendered successfully`);
+
+        if (isMounted) {
+          setIsRendered(true);
+          if (onPageRendered) {
+            onPageRendered();
+          }
+        }
+      } catch (err) {
+        console.error('Error rendering page:', err);
+      }
+    };
+
+    // Render the page
+    renderPage();
+
+    return () => {
+      isMounted = false;
+      if (renderTask && renderTask.cancel) {
+        try {
+          renderTask.cancel();
+        } catch (e) {
+          console.error('Error canceling render task:', e);
+        }
+      }
+
+      if (textLayerTask && textLayerTask.cancel) {
+        try {
+          textLayerTask.cancel();
+        } catch (e) {
+          console.error('Error canceling text layer task:', e);
+        }
+      }
+    };
+  }, [pdfDocument, pageNumber, isMobile, isSmallMobile, onPageRendered]);
+
   return (
-    <div 
-      className={`pdf-page bg-white rounded-lg shadow-lg ${isMobile ? 'p-2' : 'p-4'} overflow-hidden ${
-        isAnimating ? direction === 'next' ? 'animate-page-turn' : 'animate-page-turn-reverse' : ''
-      }`}
+    <div
+      className={`pdf-page ${isMobile ? 'pdf-page-mobile-padding' : 'pdf-page-desktop-padding'} hardware-accelerated`}
       data-page={pageNumber}
     >
-      <div className={`flex justify-between items-center ${isMobile ? 'mb-2' : 'mb-4'}`}>
-        <h2 className={`${isMobile ? 'text-base' : 'text-xl'} font-medium`}>Page {pageNumber} of {pdfDocument?.numPages || '?'}</h2>
-        <p className="text-gray-500 truncate max-w-xs text-sm">{documentName}</p>
-      </div>
       <div
-        className="flex justify-center relative overflow-hidden"
-        onMouseDown={(e) => {
-          // Start panning on mouse down (desktop only)
-          handlePanStart(e.clientX, e.clientY);
-        }}
-        onMouseMove={(e) => {
-          // Continue panning on mouse move (desktop only)
-          handlePanMove(e.clientX, e.clientY);
-        }}
+        ref={containerRef}
+        className={`pdf-container ${isAnimating ? `animating ${direction}` : ''} ${isPanning ? 'panning' : ''}`}
+        data-transform="true"
+        onMouseDown={handlePanStart}
+        onTouchStart={handleTouchPanStart}
         onMouseUp={(e) => {
-          // If we were panning, end the pan (desktop only)
-          if (isPanning) {
-            handlePanEnd();
-            e.stopPropagation(); // Prevent other handlers
-          } else {
-            // Otherwise, handle as a regular click/annotation
+          handlePanEnd();
+          if (!isPanning) {
             onMouseUp(e, pageOffset);
           }
         }}
-        onMouseLeave={() => {
-          // End panning if mouse leaves the element (desktop only)
-          handlePanEnd();
-        }}
-        // We're handling touch events with direct event listeners instead of React events
-        // because we need to set passive: false to prevent default browser behavior
-        data-page={pageNumber}
+        onTouchEnd={handleTouchPanEnd}
+        onMouseLeave={handlePanEnd}
       >
-        <div
-          ref={containerRef}
-          className="pdf-container touch-none select-none pdf-page" // Disable browser's default touch actions and text selection
-          style={{ touchAction: 'none' }} // Explicitly disable browser touch actions for better mobile support
-        >
+        <div className="pdf-canvas-container">
           <canvas
             ref={canvasRef}
+            className="pdf-canvas"
             onClick={(e) => {
-              // Only trigger click if we weren't panning significantly
-              if (!isPanning && Math.abs(panOffset.x - lastPanOffset.x) < 10 && Math.abs(panOffset.y - lastPanOffset.y) < 10) {
+              if (!isPanning) {
                 onCanvasClick(e, pageOffset);
               }
             }}
-            className="cursor-move max-w-full" // Changed cursor to indicate panning ability
-            data-page={pageNumber}
           />
-          <canvas
-            ref={annotationCanvasRef}
-            className="absolute top-0 left-0 pointer-events-none"
-            data-page={pageNumber}
-          />
+          <div ref={textLayerRef} className="pdf-text-layer" />
+          <canvas ref={annotationCanvasRef} className="pdf-annotation-canvas" />
         </div>
+
+        {/* Reset pan position button */}
+        {(panOffset.x !== 0 || panOffset.y !== 0) && (
+          <button
+            className="pdf-reset-view-button"
+            onClick={() => {
+              setPanOffset({ x: 0, y: 0 });
+              setLastPanOffset({ x: 0, y: 0 });
+            }}
+            aria-label="Reset view"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clipRule="evenodd" />
+            </svg>
+          </button>
+        )}
       </div>
 
-      {/* Reset pan position button */}
-      {(panOffset.x !== 0 || panOffset.y !== 0) && (
-        <button 
-          className="absolute bottom-4 right-4 bg-primary text-white p-2 rounded-full shadow-lg opacity-70 hover:opacity-100 transition-opacity z-10"
-          onClick={() => {
-            setPanOffset({ x: 0, y: 0 });
-            setLastPanOffset({ x: 0, y: 0 });
-            if (containerRef.current) {
-              containerRef.current.style.transform = 'translate(0px, 0px)';
-            }
-          }}
-          aria-label="Reset view"
-          onTouchEnd={(e) => {
-            // Prevent event propagation to avoid triggering other touch handlers
-            e.stopPropagation();
-          }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"></path>
-            <path d="M12 8v8"></path>
-            <path d="M8 12h8"></path>
-          </svg>
-        </button>
+      {/* Loading indicator */}
+      {!isRendered && (
+        <div className="pdf-loading-indicator">
+          <div className="spinner"></div>
+          <p>Loading page {pageNumber}...</p>
+        </div>
       )}
     </div>
   );

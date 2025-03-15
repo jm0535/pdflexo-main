@@ -32,26 +32,11 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
   const handleResultClick = (index: number, page: number) => {
     console.log(`SearchPanel: Clicked on result ${index}, page ${page}`);
 
-    // Call the parent handler
+    // Call the parent handler which now has improved navigation logic
     onResultClick(index, page);
 
-    // Also try a direct approach after a delay
-    setTimeout(() => {
-      try {
-        // Try to directly navigate to the page
-        const pageElement = document.getElementById(`pdf-canvas-page-${page}`);
-        if (pageElement) {
-          console.log(
-            `SearchPanel: Found page element for page ${page}, scrolling to it`
-          );
-          pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
-        } else {
-          console.log(`SearchPanel: Page element for page ${page} not found`);
-        }
-      } catch (err) {
-        console.error("Error in direct navigation:", err);
-      }
-    }, 500);
+    // We no longer need the direct approach here since the parent handler
+    // in SimplePDFViewer has been improved to handle navigation more reliably
   };
 
   return (

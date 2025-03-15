@@ -34,39 +34,8 @@ const ImprovedSearchPanel: React.FC<ImprovedSearchPanelProps> = ({
       `ImprovedSearchPanel: Clicked on result ${index}, page ${page}`
     );
 
-    // Call the parent handler
+    // Call the parent handler which now has improved navigation logic
     onResultClick(index, page);
-
-    // Force direct navigation after a delay
-    setTimeout(() => {
-      try {
-        // Try to directly navigate to the page
-        const pageElement = document.getElementById(`pdf-canvas-page-${page}`);
-        if (pageElement) {
-          console.log(
-            `ImprovedSearchPanel: Found page element for page ${page}, scrolling to it`
-          );
-          pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
-        } else {
-          console.log(
-            `ImprovedSearchPanel: Page element for page ${page} not found`
-          );
-
-          // Try to find any canvas element for this page
-          const canvasElements = document.querySelectorAll("canvas");
-          console.log(
-            `ImprovedSearchPanel: Found ${canvasElements.length} canvas elements`
-          );
-
-          // Log all canvas IDs for debugging
-          canvasElements.forEach((canvas) => {
-            console.log(`ImprovedSearchPanel: Canvas ID: ${canvas.id}`);
-          });
-        }
-      } catch (err) {
-        console.error("Error in direct navigation:", err);
-      }
-    }, 800); // Use a longer delay
   };
 
   return (

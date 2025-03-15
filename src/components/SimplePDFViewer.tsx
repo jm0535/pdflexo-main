@@ -1070,68 +1070,85 @@ export const SimplePDFViewer = ({
       `SimplePDFViewer: Handling search result click: index ${index}, page ${page}`
     );
 
-    // First, force a complete re-render by setting loading to true
+    // Update the current search index
+    setCurrentSearchIndex(index);
+    
+    // Force a complete re-render by setting loading to true
     setLoading(true);
-
-    // Then update all state variables in sequence with delays
+    
+    // Use a timeout to ensure the loading state is applied
     setTimeout(() => {
-      // Step 1: Change the page
+      // Change the page
       setCurrentPage(page);
-
-      // Step 2: After page change, update search index and finish loading
+      
+      // After a short delay, finish loading and scroll to the page
       setTimeout(() => {
-        setCurrentSearchIndex(index);
         setLoading(false);
-
-        // Step 3: After everything is updated, try to scroll to the page
+        
+        // After rendering is complete, scroll to the page
         setTimeout(() => {
           try {
-            // Try to find the canvas for this page
-            const pageElement = document.getElementById(
-              `pdf-canvas-page-${page}`
-            );
+            // Try multiple approaches to find and scroll to the page
+            
+            // Approach 1: Direct ID selector
+            const pageElement = document.getElementById(`pdf-canvas-page-${page}`);
             if (pageElement) {
-              console.log(
-                `SimplePDFViewer: Found page element for page ${page}, scrolling to it`
-              );
-              pageElement.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
-              });
-            } else {
-              console.log(
-                `SimplePDFViewer: Page element for page ${page} not found`
-              );
-
-              // Try to find any canvas element for this page as a fallback
-              const canvasElements = document.querySelectorAll("canvas");
-              console.log(
-                `SimplePDFViewer: Found ${canvasElements.length} canvas elements`
-              );
-
-              // Try to find a canvas with a similar ID or data attribute
-              for (const canvas of canvasElements) {
-                if (
-                  canvas.id.includes(`${page}`) ||
-                  canvas.getAttribute("data-page-number") === `${page}`
-                ) {
-                  console.log(
-                    `SimplePDFViewer: Found canvas for page ${page} by alternative means`
-                  );
+              console.log(`SimplePDFViewer: Found page element by ID, scrolling to page ${page}`);
+              pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+              return;
+            }
+            
+            // Approach 2: Data attribute selector
+            const pageByData = document.querySelector(`[data-page-number="${page}"]`);
+            if (pageByData) {
+              console.log(`SimplePDFViewer: Found page element by data attribute, scrolling to page ${page}`);
+              pageByData.scrollIntoView({ behavior: "smooth", block: "start" });
+              return;
+            }
+            
+            // Approach 3: Force scroll using container
+            const container = containerRef.current;
+            if (container) {
+              console.log(`SimplePDFViewer: Using container scroll method for page ${page}`);
+              
+              // Find all canvas elements
+              const canvases = container.querySelectorAll('canvas');
+              console.log(`SimplePDFViewer: Found ${canvases.length} canvas elements`);
+              
+              // Try to find the canvas for this page
+              for (let i = 0; i < canvases.length; i++) {
+                const canvas = canvases[i];
+                if (canvas.id.includes(`${page}`) || 
+                    canvas.getAttribute('data-page-number') === `${page}`) {
+                  console.log(`SimplePDFViewer: Found canvas for page ${page}, scrolling to it`);
                   canvas.scrollIntoView({ behavior: "smooth", block: "start" });
-                  break;
+                  return;
                 }
               }
+              
+              // If we're in continuous mode, try to estimate the scroll position
+              if (viewMode === "continuous" && numPages > 0) {
+                console.log(`SimplePDFViewer: Using estimated scroll position for page ${page}`);
+                const scrollHeight = container.scrollHeight;
+                const estimatedPosition = (scrollHeight / numPages) * (page - 1);
+                container.scrollTo({
+                  top: estimatedPosition,
+                  behavior: "smooth"
+                });
+                return;
+              }
             }
+            
+            console.warn(`SimplePDFViewer: Could not find any element for page ${page}`);
           } catch (err) {
             console.error("Error scrolling to page:", err);
           }
-        }, 500);
-      }, 300);
-    }, 100);
+        }, 300); // Wait for DOM to update after loading state changes
+      }, 200); // Wait for page change to be processed
+    }, 100); // Wait for loading state to be applied
   };
 
-  // Clear search
+  // Clear search - accidentally removed in previous edit
   const clearSearch = () => {
     setShowSearch(false);
     setShowSearchPanel(false);

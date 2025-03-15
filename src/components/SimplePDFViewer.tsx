@@ -6,15 +6,15 @@ import {
   clearPdfCache,
 } from "@/lib/pdfjs-setup";
 import "./SimplePDFViewer.css";
-import {
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  Maximize,
-  List,
-  Bookmark,
-  Search,
-  ChevronLeft,
+import { 
+  ZoomIn, 
+  ZoomOut, 
+  RotateCw, 
+  Maximize, 
+  List, 
+  Bookmark, 
+  Search, 
+  ChevronLeft, 
   ChevronRight,
   Grid2X2,
   SplitSquareVertical,
@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import SearchPanel from "./SearchPanel";
 
 // Initialize PDF.js worker
 initPdfWorker();
@@ -73,7 +74,25 @@ export const SimplePDFViewer = ({
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [renderedPages, setRenderedPages] = useState<number[]>([]);
-
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState<boolean>(false);
+  const [searchHighlights, setSearchHighlights] = useState<Map<number, any[]>>(
+    new Map()
+  );
+  const [detailedSearchResults, setDetailedSearchResults] = useState<
+    {
+      page: number;
+      text: string;
+      matches: {
+        text: string;
+        position: { left: number; top: number; width: number; height: number };
+        originalText: string;
+        contextBefore: string;
+        contextAfter: string;
+      }[];
+    }[]
+  >([]);
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasesRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
@@ -164,13 +183,13 @@ export const SimplePDFViewer = ({
             const context = canvas.getContext("2d");
             canvas.height = viewport.height;
             canvas.width = viewport.width;
-
+            
             if (context) {
               await page.render({
                 canvasContext: context,
                 viewport: viewport,
               }).promise;
-
+              
               thumbs.push(canvas.toDataURL());
             }
           } catch (err) {
@@ -222,7 +241,7 @@ export const SimplePDFViewer = ({
   // Calculate appropriate scale based on container width
   const calculateScale = useCallback(() => {
     if (!containerRef.current || !pdfDocRef.current) return scale;
-
+    
     const containerWidth =
       containerRef.current.clientWidth - (showSidebar ? 250 : 0);
     // Use a fixed width for consistency (85% of container width)
@@ -232,7 +251,7 @@ export const SimplePDFViewer = ({
     if (viewMode === "twoPages") {
       return targetWidth / 2 / 595; // 595 is a standard PDF width in points
     }
-
+    
     return targetWidth / 595; // 595 is a standard PDF width in points
   }, [scale, showSidebar, viewMode]);
 
@@ -272,7 +291,7 @@ export const SimplePDFViewer = ({
       !numPages ||
       renderedPages.length === 0
     )
-      return;
+          return;
 
     const renderPages = async () => {
       try {
@@ -284,7 +303,7 @@ export const SimplePDFViewer = ({
         if (fitToWidth) {
           calculatedScale = calculateScale() || scale;
         }
-
+        
         // Track successful renders
         let successfulRenders = 0;
         let totalPages = renderedPages.length;
@@ -297,8 +316,8 @@ export const SimplePDFViewer = ({
             const page = await pdfDocRef.current!.getPage(pageNum);
 
             // Create viewport
-            const viewport = page.getViewport({
-              scale: calculatedScale,
+        const viewport = page.getViewport({ 
+          scale: calculatedScale,
               rotation: rotation,
             });
 
@@ -324,8 +343,8 @@ export const SimplePDFViewer = ({
             }
 
             // Set canvas dimensions
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
             // Store reference to canvas
             canvasesRef.current.set(pageNum, canvas);
@@ -334,12 +353,12 @@ export const SimplePDFViewer = ({
             context.clearRect(0, 0, canvas.width, canvas.height);
 
             // Render page to canvas with a timeout to prevent blocking
-            try {
-              await page.render({
-                canvasContext: context,
-                viewport: viewport,
-              }).promise;
-
+        try {
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+          }).promise;
+          
               successfulRenders++;
               console.log(`Successfully rendered page ${pageNum}`);
             } catch (renderErr) {
@@ -410,7 +429,7 @@ export const SimplePDFViewer = ({
     if (viewMode === "twoPages") {
       // In two pages mode, go forward by 2 pages
       setCurrentPage(Math.min(numPages, currentPage + 2));
-    } else {
+      } else {
       setCurrentPage(currentPage + 1);
     }
   };
@@ -488,7 +507,7 @@ export const SimplePDFViewer = ({
 
   const toggleFullscreen = () => {
     if (!viewerRef.current) return;
-
+    
     if (!document.fullscreenElement) {
       viewerRef.current.requestFullscreen().catch((err) => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
@@ -571,7 +590,7 @@ export const SimplePDFViewer = ({
               <ul className="pdf-outline-list">
                 {outline.map((item: any, index) => (
                   <li key={`outline-${index}`} className="pdf-outline-item">
-                    <button
+                    <button 
                       onClick={() => handleOutlineItemClick(item)}
                       className="text-left hover:text-primary"
                     >
@@ -584,7 +603,7 @@ export const SimplePDFViewer = ({
                             key={`outline-${index}-${subIndex}`}
                             className="pdf-outline-item"
                           >
-                            <button
+                            <button 
                               onClick={() => handleOutlineItemClick(subItem)}
                               className="text-left hover:text-primary"
                             >
@@ -602,15 +621,15 @@ export const SimplePDFViewer = ({
             )}
           </div>
         );
-
+      
       case "bookmarks":
         return (
           <div className="pdf-sidebar-content">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium">Bookmarks</h3>
-              <Button
-                variant="outline"
-                size="sm"
+              <Button 
+                variant="outline" 
+                size="sm" 
                 onClick={addBookmark}
                 title="Add Bookmark"
               >
@@ -624,15 +643,15 @@ export const SimplePDFViewer = ({
                     key={bookmark.id}
                     className="pdf-bookmark-item flex justify-between items-center py-2"
                   >
-                    <button
+                    <button 
                       onClick={() => setCurrentPage(bookmark.page)}
                       className="text-left hover:text-primary flex-1"
                     >
                       {bookmark.title}
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
                       onClick={() => removeBookmark(bookmark.id)}
                       className="text-red-500 hover:text-red-700"
                     >
@@ -646,15 +665,15 @@ export const SimplePDFViewer = ({
             )}
           </div>
         );
-
+      
       case "thumbnails":
         return (
           <div className="pdf-sidebar-content">
             <h3 className="text-lg font-medium mb-2">Page Thumbnails</h3>
             <div className="grid grid-cols-2 gap-2">
               {thumbnails.map((thumb, index) => (
-                <div
-                  key={`thumb-${index}`}
+                <div 
+                  key={`thumb-${index}`} 
                   className={`pdf-thumbnail-item cursor-pointer border-2 ${
                     currentPage === index + 1
                       ? "border-primary"
@@ -675,7 +694,7 @@ export const SimplePDFViewer = ({
             </div>
           </div>
         );
-
+      
       default:
         return null;
     }
@@ -683,10 +702,10 @@ export const SimplePDFViewer = ({
 
   const handleOutlineItemClick = async (item: any) => {
     if (!pdfDocRef.current) return;
-
+    
     try {
       let pageNumber = 1; // Default to first page
-
+      
       if (item.dest) {
         // Handle different types of destinations
         if (typeof item.dest === "string") {
@@ -716,11 +735,11 @@ export const SimplePDFViewer = ({
         // Some outlines might have direct pageNumber property
         pageNumber = item.pageNumber;
       }
-
+      
       // Ensure valid page number
       if (pageNumber < 1) pageNumber = 1;
       if (pageNumber > numPages) pageNumber = numPages;
-
+      
       setCurrentPage(pageNumber);
     } catch (err) {
       console.error("Error navigating to outline item:", err);
@@ -809,6 +828,13 @@ export const SimplePDFViewer = ({
         return;
       }
 
+      // Handle Ctrl+F for search
+      if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault(); // Prevent browser's default search
+        setShowSearch(true);
+        return;
+      }
+
       switch (e.key) {
         case "ArrowLeft":
           if (currentPage > 1) setCurrentPage((p) => p - 1);
@@ -847,58 +873,356 @@ export const SimplePDFViewer = ({
     };
   }, [currentPage, numPages]);
 
-  // Handle search functionality
+  // Function to get context around a match
+  const getTextContext = (
+    text: string,
+    matchIndex: number,
+    matchLength: number,
+    contextSize: number = 20
+  ) => {
+    const startContext = Math.max(0, matchIndex - contextSize);
+    const endContext = Math.min(
+      text.length,
+      matchIndex + matchLength + contextSize
+    );
+
+    return {
+      contextBefore: text.substring(startContext, matchIndex),
+      contextAfter: text.substring(matchIndex + matchLength, endContext),
+    };
+  };
+
+  // Handle search functionality - completely rewritten for better performance and highlighting
   const handleSearch = async () => {
     if (!searchText || !pdfDocRef.current) return;
 
     try {
-      setLoading(true);
+      setIsSearching(true);
+      setSearchResults([]);
+      setDetailedSearchResults([]);
+      setSearchHighlights(new Map());
+
       const results: any[] = [];
+      const detailedResults: any[] = [];
+      const highlights = new Map();
+      let totalMatchCount = 0;
+
+      // Case insensitive search
+      const searchTermLower = searchText.toLowerCase().trim();
+
+      if (searchTermLower.length === 0) {
+        setIsSearching(false);
+        return;
+      }
+
+      // Show a loading indicator in the search bar
+      const searchStatusElement = document.getElementById("search-status");
+      if (searchStatusElement) {
+        searchStatusElement.textContent = "Searching...";
+      }
 
       for (let i = 1; i <= numPages; i++) {
-        const page = await pdfDocRef.current.getPage(i);
-        const textContent = await page.getTextContent();
+        try {
+          // Get the page
+          const page = await pdfDocRef.current.getPage(i);
 
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(" ");
+          // Get text content with item positions
+          const textContent = await page.getTextContent();
+          const viewport = page.getViewport({ scale: 1.0 }); // Use scale 1.0 for position calculations
 
-        if (pageText.toLowerCase().includes(searchText.toLowerCase())) {
-          results.push({ page: i, text: pageText });
+          // Process text content for this page
+          let pageHasMatches = false;
+          const pageMatches: any[] = [];
+
+          // Process each text item to find matches
+          textContent.items.forEach((item: any) => {
+            if (!item.str) return; // Skip items without text
+
+            const itemText = item.str;
+            const itemTextLower = itemText.toLowerCase();
+
+            // Find all occurrences of the search term in this text item
+            let startIndex = 0;
+            while (true) {
+              const matchIndex = itemTextLower.indexOf(
+                searchTermLower,
+                startIndex
+              );
+              if (matchIndex === -1) break;
+
+              pageHasMatches = true;
+              totalMatchCount++;
+
+              // Calculate position for highlighting
+              // Use the transform matrix from the text item for accurate positioning
+              const [scaleX, skewX, skewY, scaleY, transX, transY] =
+                item.transform;
+
+              // Calculate position based on the text's transform and the match position
+              const position = {
+                left: transX + matchIndex * scaleX,
+                top: transY - scaleY, // Adjust for PDF coordinate system
+                width: searchTermLower.length * scaleX,
+                height: Math.abs(scaleY) * 1.2, // Slightly taller than the text
+              };
+
+              // Get context around the match
+              const { contextBefore, contextAfter } = getTextContext(
+                itemText,
+                matchIndex,
+                searchTermLower.length
+              );
+
+              // Add match to page matches
+              pageMatches.push({
+                text: itemText.substring(
+                  matchIndex,
+                  matchIndex + searchTermLower.length
+                ),
+                position: position,
+                originalText: itemText,
+                contextBefore,
+                contextAfter,
+              });
+
+              // Move to next potential match
+              startIndex = matchIndex + searchTermLower.length;
+            }
+          });
+
+          // If we found matches on this page, add to results
+          if (pageHasMatches) {
+            // Join all text items for the basic result
+            const pageText = textContent.items
+              .map((item: any) => item.str)
+              .join(" ");
+
+            // Basic result for navigation
+            results.push({
+              page: i,
+              text: pageText,
+              matchCount: pageMatches.length,
+            });
+
+            // Add detailed result
+            detailedResults.push({
+              page: i,
+              text: pageText,
+              matches: pageMatches,
+            });
+
+            // Store highlights for this page
+            highlights.set(i, pageMatches);
+
+            // Update search status
+            if (searchStatusElement) {
+              searchStatusElement.textContent = `Found ${totalMatchCount} matches on ${results.length} pages...`;
+            }
+          }
+        } catch (err) {
+          console.error(`Error searching page ${i}:`, err);
         }
       }
 
+      // Update state with search results
       setSearchResults(results);
+      setDetailedSearchResults(detailedResults);
+      setSearchHighlights(highlights);
+
+      // Show search panel if we have results
+      if (results.length > 0) {
+        setShowSearchPanel(true);
+      }
+
+      // Navigate to first result if found
       if (results.length > 0) {
         setCurrentSearchIndex(0);
         setCurrentPage(results[0].page);
+
+        // Update search status
+        if (searchStatusElement) {
+          searchStatusElement.textContent = `Found ${totalMatchCount} matches on ${results.length} pages`;
+        }
       } else {
         setCurrentSearchIndex(-1);
+
+        // Update search status
+        if (searchStatusElement) {
+          searchStatusElement.textContent = "No matches found";
+        }
       }
     } catch (err) {
       console.error("Error searching PDF:", err);
+
+      // Update search status
+      const searchStatusElement = document.getElementById("search-status");
+      if (searchStatusElement) {
+        searchStatusElement.textContent = "Search error";
+      }
     } finally {
-      setLoading(false);
+      setIsSearching(false);
     }
   };
 
-  // Navigation functions
+  // Handle search result click
+  const handleSearchResultClick = (index: number, page: number) => {
+    console.log(`Handling search result click: index ${index}, page ${page}`);
+
+    // First change the page
+    setCurrentPage(page);
+
+    // Then update the search index after a short delay
+    setTimeout(() => {
+      setCurrentSearchIndex(index);
+
+      // Scroll to the page in continuous mode
+      if (viewMode === "continuous") {
+        const pageElement = document.getElementById(`pdf-canvas-page-${page}`);
+        if (pageElement) {
+          pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }, 100);
+  };
+
+  // Clear search
+  const clearSearch = () => {
+    setShowSearch(false);
+    setShowSearchPanel(false);
+    setSearchText("");
+    setSearchResults([]);
+    setDetailedSearchResults([]);
+    setSearchHighlights(new Map());
+    setCurrentSearchIndex(-1);
+  };
+
+  // Navigation functions for search results
   const navigateToNextSearchResult = () => {
     if (searchResults.length === 0 || currentSearchIndex === -1) return;
 
     const nextIndex = (currentSearchIndex + 1) % searchResults.length;
-    setCurrentSearchIndex(nextIndex);
-    setCurrentPage(searchResults[nextIndex].page);
+    const targetPage = searchResults[nextIndex].page;
+
+    // Use our handleSearchResultClick function for consistency
+    handleSearchResultClick(nextIndex, targetPage);
   };
 
   const navigateToPrevSearchResult = () => {
     if (searchResults.length === 0 || currentSearchIndex === -1) return;
 
-    const prevIndex =
-      (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
-    setCurrentSearchIndex(prevIndex);
-    setCurrentPage(searchResults[prevIndex].page);
+    const prevIndex = (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
+    const targetPage = searchResults[prevIndex].page;
+
+    // Use our handleSearchResultClick function for consistency
+    handleSearchResultClick(prevIndex, targetPage);
   };
+
+  // Function to render search highlights
+  const renderSearchHighlights = () => {
+    if (
+      !searchHighlights.has(currentPage) ||
+      searchHighlights.get(currentPage).length === 0
+    ) {
+      return null;
+    }
+
+    // Get highlights for current page
+    const highlights = searchHighlights.get(currentPage);
+
+    // Calculate scale factor based on current scale
+    let scaleFactor = scale;
+    if (fitToWidth) {
+      scaleFactor = calculateScale() || scale;
+    }
+
+    // Get the canvas element for positioning
+    const canvas = document.getElementById(
+      `pdf-canvas-page-${currentPage}`
+    ) as HTMLCanvasElement;
+    if (!canvas) return null;
+
+    // Get canvas position
+    const canvasRect = canvas.getBoundingClientRect();
+    const containerRect = containerRef.current?.getBoundingClientRect();
+
+    if (!containerRect) return null;
+
+    // Calculate offset relative to container
+    const offsetLeft = canvasRect.left - containerRect.left;
+    const offsetTop = canvasRect.top - containerRect.top;
+
+    // Find the current highlight (if we're on the current search result page)
+    const isCurrentResultPage =
+      currentSearchIndex !== -1 &&
+      searchResults[currentSearchIndex]?.page === currentPage;
+
+    return (
+      <div
+        className="search-highlights-container"
+        key={`highlights-container-${currentPage}-${scale}-${rotation}`}
+        style={{
+          position: "absolute",
+          top: offsetTop + "px",
+          left: offsetLeft + "px",
+          width: canvas.width + "px",
+          height: canvas.height + "px",
+          pointerEvents: "none", // Ensure highlights don't interfere with clicks
+        }}
+      >
+        {highlights.map((highlight, index) => (
+          <div
+            key={`highlight-${currentPage}-${index}-${scale}-${rotation}`}
+            className={`search-highlight ${
+              isCurrentResultPage ? "current" : ""
+            }`}
+            style={{
+              left: highlight.position.left * scaleFactor + "px",
+              top: highlight.position.top * scaleFactor + "px",
+              width: highlight.position.width * scaleFactor + "px",
+              height: highlight.position.height * scaleFactor + "px",
+              pointerEvents: "none", // Ensure highlights don't interfere with clicks
+            }}
+            title={`${highlight.contextBefore}${highlight.text}${highlight.contextAfter}`}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  // Clear search when changing view mode
+  useEffect(() => {
+    // Clear search results when changing view mode
+    setSearchText("");
+    setSearchResults([]);
+    setDetailedSearchResults([]);
+    setSearchHighlights(new Map());
+    setCurrentSearchIndex(-1);
+    setShowSearchPanel(false);
+  }, [viewMode]);
+
+  // Update search highlights when page or scale changes
+  useEffect(() => {
+    // We'll use React's key prop to force re-render instead of direct DOM manipulation
+
+    // If we have search results and we're on a page with highlights, make sure they're visible
+    if (searchHighlights.has(currentPage) && currentSearchIndex !== -1) {
+      // If the current search result is on a different page, update the search index
+      // to the first result on the current page
+      const currentResultPage = searchResults[currentSearchIndex]?.page;
+
+      if (currentResultPage !== currentPage) {
+        // Find the first search result on the current page
+        const resultOnCurrentPage = searchResults.findIndex(
+          (result) => result.page === currentPage
+        );
+
+        if (resultOnCurrentPage !== -1) {
+          // Update the search index to the first result on the current page
+          setCurrentSearchIndex(resultOnCurrentPage);
+        }
+      }
+    }
+  }, [currentPage, searchHighlights, searchResults, currentSearchIndex]);
 
   // Render the PDF viewer based on view mode
   const renderPDFViewer = () => {
@@ -967,7 +1291,7 @@ export const SimplePDFViewer = ({
       <div className="flex flex-col items-center justify-center h-full p-8 bg-slate-900 text-white">
         <div className="text-red-400 mb-4 text-center">{error}</div>
         <div className="flex space-x-4">
-          <button
+        <button
             onClick={() => {
               setError(null);
               setLoading(true);
@@ -983,9 +1307,9 @@ export const SimplePDFViewer = ({
               }, 500);
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Retry
-          </button>
+        >
+          Retry
+        </button>
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800"
@@ -998,16 +1322,16 @@ export const SimplePDFViewer = ({
   }
 
   return (
-    <div
+    <div 
       className={`pdf-viewer-container ${isFullscreen ? "fullscreen" : ""}`}
       ref={viewerRef}
     >
       {/* Top Toolbar */}
       <div className="pdf-toolbar">
         <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={goToPreviousPage}
             disabled={currentPage <= 1}
             title="Previous Page"
@@ -1015,7 +1339,7 @@ export const SimplePDFViewer = ({
           >
             <ChevronLeft className="h-5 w-5" />
           </Button>
-
+          
           <div className="flex items-center">
             <Input
               type="number"
@@ -1032,10 +1356,10 @@ export const SimplePDFViewer = ({
             />
             <span className="mx-2 font-medium">/ {numPages}</span>
           </div>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={goToNextPage}
             disabled={currentPage >= numPages}
             title="Next Page"
@@ -1044,11 +1368,11 @@ export const SimplePDFViewer = ({
             <ChevronRight className="h-5 w-5" />
           </Button>
         </div>
-
+        
         <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={() => toggleSidebar("outline")}
             className={`font-medium ${
               showSidebar && sidebarTab === "outline"
@@ -1060,10 +1384,10 @@ export const SimplePDFViewer = ({
             <List className="h-4 w-4 mr-1" />
             <span>Outline</span>
           </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={() => toggleSidebar("bookmarks")}
             className={`font-medium ${
               showSidebar && sidebarTab === "bookmarks"
@@ -1075,10 +1399,10 @@ export const SimplePDFViewer = ({
             <Bookmark className="h-4 w-4 mr-1" />
             <span>Bookmarks</span>
           </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={() => toggleSidebar("thumbnails")}
             className={`font-medium ${
               showSidebar && sidebarTab === "thumbnails"
@@ -1091,11 +1415,11 @@ export const SimplePDFViewer = ({
             <span>Thumbnails</span>
           </Button>
         </div>
-
+        
         <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={handleZoomOut}
             title="Zoom Out"
             className="font-medium"
@@ -1103,10 +1427,10 @@ export const SimplePDFViewer = ({
             <ZoomOut className="h-4 w-4 mr-1" />
             <span>-</span>
           </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={toggleFitToWidth}
             className={`font-medium ${
               fitToWidth ? "bg-primary text-white" : ""
@@ -1115,10 +1439,10 @@ export const SimplePDFViewer = ({
           >
             <span>Fit</span>
           </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={handleZoomIn}
             title="Zoom In"
             className="font-medium"
@@ -1126,10 +1450,10 @@ export const SimplePDFViewer = ({
             <ZoomIn className="h-4 w-4 mr-1" />
             <span>+</span>
           </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={handleRotate}
             title="Rotate"
             className="font-medium"
@@ -1138,11 +1462,11 @@ export const SimplePDFViewer = ({
             <span>Rotate</span>
           </Button>
         </div>
-
+        
         <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={() => toggleViewMode("continuous")}
             className={`font-medium ${
               viewMode === "continuous" ? "bg-primary text-white" : ""
@@ -1151,10 +1475,10 @@ export const SimplePDFViewer = ({
           >
             <span>Continuous</span>
           </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={() => toggleViewMode("twoPages")}
             className={`font-medium ${
               viewMode === "twoPages" ? "bg-primary text-white" : ""
@@ -1164,10 +1488,10 @@ export const SimplePDFViewer = ({
             <SplitSquareVertical className="h-4 w-4 mr-1" />
             <span>Two Pages</span>
           </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={toggleFullscreen}
             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             className="font-medium"
@@ -1176,11 +1500,11 @@ export const SimplePDFViewer = ({
             <span>Fullscreen</span>
           </Button>
         </div>
-
+        
         <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <Button 
+            variant="outline" 
+            size="sm" 
             onClick={() => setShowSearch(!showSearch)}
             className={`font-medium ${
               showSearch ? "bg-primary text-white" : ""
@@ -1192,11 +1516,12 @@ export const SimplePDFViewer = ({
           </Button>
         </div>
       </div>
-
+      
       {/* Search Bar */}
       {showSearch && (
         <div className="pdf-search-bar">
-          <div className="flex items-center w-full max-w-md">
+          <div className="pdf-search-input-container">
+            <Search className="search-icon h-4 w-4" />
             <Input
               type="text"
               placeholder="Search in document..."
@@ -1204,65 +1529,126 @@ export const SimplePDFViewer = ({
               onChange={(e) => setSearchText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
+                  if (e.shiftKey) {
+                    // Shift+Enter for previous result
+                    if (searchResults.length > 0) {
+                      e.preventDefault();
+                      navigateToPrevSearchResult();
+                    }
+                  } else if (
+                    searchResults.length > 0 &&
+                    currentSearchIndex !== -1
+                  ) {
+                    // Enter for next result if we already have results
+                    e.preventDefault();
+                    navigateToNextSearchResult();
+                  } else {
+                    // Otherwise, perform search
                   handleSearch();
+                  }
+                } else if (e.key === "Escape") {
+                  // Escape to close search
+                  setShowSearch(false);
+                  setShowSearchPanel(false);
                 }
               }}
-              className="mr-2 bg-slate-700 text-white placeholder-slate-300 border-slate-600 text-base"
+              className="w-full bg-slate-700 text-white placeholder-slate-300 border-slate-600 text-base"
+              disabled={isSearching}
+              autoFocus
             />
-            <Button
-              variant="outline"
-              size="sm"
+          </div>
+          <div className="pdf-search-controls">
+            <Button 
+              variant="outline" 
+              size="sm" 
               onClick={handleSearch}
               className="font-medium bg-blue-600 hover:bg-blue-700 text-white border-blue-700"
+              disabled={isSearching || !searchText.trim()}
             >
-              <Search className="h-5 w-5 mr-1" />
+              {isSearching ? (
+                <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />
+              ) : (
               <span>Find</span>
+              )}
             </Button>
             {searchResults.length > 0 && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
+                <Button 
+                  variant="outline" 
+                  size="sm" 
                   onClick={navigateToPrevSearchResult}
-                  className="ml-2 font-medium bg-slate-700 text-white border-slate-600"
+                  className="font-medium bg-slate-700 text-white border-slate-600"
+                  disabled={isSearching}
+                  title="Previous Result (Shift+Enter)"
                 >
-                  <ArrowUp className="h-5 w-5" />
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={navigateToNextSearchResult}
+                  className="font-medium bg-slate-700 text-white border-slate-600"
+                  disabled={isSearching}
+                  title="Next Result (Enter)"
+                >
+                  <ArrowDown className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={navigateToNextSearchResult}
-                  className="ml-2 font-medium bg-slate-700 text-white border-slate-600"
+                  onClick={() => setShowSearchPanel(!showSearchPanel)}
+                  className={`font-medium ${
+                    showSearchPanel ? "bg-primary" : "bg-slate-700"
+                  } text-white border-slate-600`}
+                  disabled={isSearching}
+                  title="Toggle Search Panel"
                 >
-                  <ArrowDown className="h-5 w-5" />
+                  <List className="h-4 w-4" />
                 </Button>
-                <span className="ml-4 text-white font-medium">
-                  {currentSearchIndex + 1} of {searchResults.length}
-                </span>
               </>
             )}
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSearch(false)}
-            className="ml-auto text-white hover:bg-slate-700"
-          >
-            <X className="h-5 w-5" />
+          <Button 
+            variant="ghost" 
+            size="sm" 
+              onClick={() => {
+                setShowSearch(false);
+                setShowSearchPanel(false);
+                setSearchText("");
+                setSearchResults([]);
+                setDetailedSearchResults([]);
+                setSearchHighlights(new Map());
+              }}
+              className="text-white hover:bg-slate-700"
+              disabled={isSearching}
+            >
+              <X className="h-4 w-4" />
           </Button>
+          </div>
         </div>
       )}
-
+      
       {/* Main Content */}
       <div className="pdf-content-container" ref={containerRef}>
         {/* Sidebar */}
         {showSidebar && (
           <div className="pdf-sidebar">{renderSidebarContent()}</div>
         )}
-
+        
         {/* PDF Viewer */}
         <div className={`pdf-canvas-container ${viewMode}`}>
           {renderPDFViewer()}
+          {searchHighlights.size > 0 && renderSearchHighlights()}
+          {showSearchPanel && (
+            <SearchPanel
+              showPanel={showSearchPanel}
+              searchResults={searchResults}
+              detailedResults={detailedSearchResults}
+              currentSearchIndex={currentSearchIndex}
+              onClose={() => setShowSearchPanel(false)}
+              onClear={clearSearch}
+              onResultClick={handleSearchResultClick}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 4001,
+    port: 3000,
     open: true,
     hmr: true, // Let Vite handle HMR automatically
   },

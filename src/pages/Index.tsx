@@ -145,13 +145,13 @@ const Index = () => {
       <div className="flex flex-col h-full">
         {TabBarComponent}
 
-        <div className="flex-1 flex items-stretch overflow-hidden">
+        <div className="flex-1 flex items-stretch overflow-auto">
           {showFileUpload ? (
             <div className="w-full flex items-center justify-center p-6">
-              <FileUpload onFileLoaded={handleFileLoaded} />
+              <FileUpload onFileLoaded={handleFileLoaded} maxFileSizeMB={100} />
             </div>
           ) : activeTab ? (
-            <div className="w-full p-4">
+            <div className="w-full h-full overflow-auto p-4">
               <div className="flex justify-end mb-4">
                 <Button
                   variant="outline"

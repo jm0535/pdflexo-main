@@ -12,7 +12,7 @@ interface FileUploadProps {
 
 const FileUpload: React.FC<FileUploadProps> = ({
   onFileLoaded,
-  maxFileSizeMB = 100,
+  maxFileSizeMB = 50,
   onTotalPagesChange,
 }) => {
   const [loading, setLoading] = useState(false);

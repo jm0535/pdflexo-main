@@ -11,6 +11,8 @@ import {
   clearPdfCache,
 } from "@/lib/pdfjs-setup";
 import "./SimplePDFViewer.css";
+import { ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // Initialize PDF.js worker
 initPdfWorker();
@@ -30,7 +32,9 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [scale, setScale] = useState<number>(1.5);
+  const [scale, setScale] = useState<number>(1.0);
+  const [rotation, setRotation] = useState<number>(0);
+  const [fitToWidth, setFitToWidth] = useState<boolean>(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -113,14 +117,14 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
 
   // Calculate appropriate scale based on container width
   const calculateScale = useCallback(() => {
-    if (!containerRef.current || !pdfDocRef.current) return;
+    if (!containerRef.current || !pdfDocRef.current) return scale;
     
     const containerWidth = containerRef.current.clientWidth;
-    // Use a fixed width for consistency (80% of container width)
-    const targetWidth = containerWidth * 0.8;
+    // Use a fixed width for consistency (85% of container width)
+    const targetWidth = containerWidth * 0.85;
     
     return targetWidth / 595; // 595 is a standard PDF width in points
-  }, []);
+  }, [scale]);
 
   // Render the current page
   useEffect(() => {
@@ -145,9 +149,16 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
         }
 
         // Calculate appropriate scale
-        const calculatedScale = calculateScale() || scale;
+        let calculatedScale = scale;
+        if (fitToWidth) {
+          calculatedScale = calculateScale() || scale;
+        }
         
-        const viewport = page.getViewport({ scale: calculatedScale });
+        const viewport = page.getViewport({ 
+          scale: calculatedScale,
+          rotation: rotation
+        });
+        
         canvas.height = viewport.height;
         canvas.width = viewport.width;
 
@@ -175,14 +186,16 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
     return () => {
       isMounted = false;
     };
-  }, [currentPage, loading, numPages, scale, calculateScale]);
+  }, [currentPage, loading, numPages, scale, calculateScale, rotation, fitToWidth]);
 
   // Recalculate scale on window resize
   useEffect(() => {
     const handleResize = () => {
-      const newScale = calculateScale();
-      if (newScale) {
-        setScale(newScale);
+      if (fitToWidth) {
+        const newScale = calculateScale();
+        if (newScale) {
+          setScale(newScale);
+        }
       }
     };
 
@@ -193,7 +206,31 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, [calculateScale]);
+  }, [calculateScale, fitToWidth]);
+
+  const handleZoomIn = () => {
+    setFitToWidth(false);
+    setScale(prevScale => Math.min(prevScale + 0.2, 3.0));
+  };
+
+  const handleZoomOut = () => {
+    setFitToWidth(false);
+    setScale(prevScale => Math.max(prevScale - 0.2, 0.5));
+  };
+
+  const handleRotate = () => {
+    setRotation(prevRotation => (prevRotation + 90) % 360);
+  };
+
+  const toggleFitToWidth = () => {
+    setFitToWidth(prev => !prev);
+    if (!fitToWidth) {
+      const newScale = calculateScale();
+      if (newScale) {
+        setScale(newScale);
+      }
+    }
+  };
 
   if (loading) {
     return (
@@ -219,28 +256,65 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
   }
 
   return (
-    <div className="flex flex-col items-center w-full" ref={containerRef}>
-      <div className="mb-4 flex items-center space-x-2">
-        <button
-          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-          disabled={currentPage <= 1}
-          className="px-4 py-2 bg-primary text-white rounded disabled:opacity-50"
-        >
-          Previous
-        </button>
-        <span className="mx-4">
-          Page {currentPage} of {numPages}
-        </span>
-        <button
-          onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
-          disabled={currentPage >= numPages}
-          className="px-4 py-2 bg-primary text-white rounded disabled:opacity-50"
-        >
-          Next
-        </button>
+    <div className="flex flex-col items-center w-full h-full" ref={containerRef}>
+      <div className="w-full mb-4 flex items-center justify-between px-4">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+            className="px-4 py-2 bg-primary text-white rounded disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="mx-2">
+            Page {currentPage} of {numPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+            disabled={currentPage >= numPages}
+            className="px-4 py-2 bg-primary text-white rounded disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleZoomOut}
+            title="Zoom Out"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={toggleFitToWidth}
+            className={fitToWidth ? "bg-primary text-white" : ""}
+            title={fitToWidth ? "Fit to Width (Active)" : "Fit to Width"}
+          >
+            Fit
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleZoomIn}
+            title="Zoom In"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRotate}
+            title="Rotate"
+          >
+            <RotateCw className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
-      <div className="pdf-canvas-container w-full flex justify-center">
-        <canvas ref={canvasRef} className="pdf-canvas shadow-lg" />
+      <div className="pdf-canvas-container">
+        <canvas ref={canvasRef} className="pdf-canvas" />
       </div>
     </div>
   );

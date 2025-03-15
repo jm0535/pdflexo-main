@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { X, Plus } from 'lucide-react';
 import { PDFTab } from '@/lib/types';
@@ -17,13 +16,13 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, onSelectTab, onCloseTab, onNewTab
   }
 
   return (
-    <div className="w-full bg-background border-b border-border flex items-center overflow-x-auto hide-scrollbar">
+    <div className="w-full bg-background flex items-center overflow-x-auto hide-scrollbar">
       <div className="flex-1 flex items-center">
         {tabs.map((tab) => (
           <div
             key={tab.id}
             className={cn(
-              "flex items-center min-w-[200px] max-w-[250px] h-10 px-4 border-r border-border cursor-pointer transition-colors",
+              "flex items-center min-w-[200px] max-w-[250px] h-8 px-4 border-r border-border cursor-pointer transition-colors",
               tab.isActive 
                 ? "bg-primary/10 text-primary font-medium" 
                 : "hover:bg-muted text-muted-foreground hover:text-foreground"

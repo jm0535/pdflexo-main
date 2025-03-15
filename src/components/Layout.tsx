@@ -46,9 +46,6 @@ const Layout: React.FC<LayoutProps> = ({ children, hideFooter = false }) => {
             <div className="fixed top-16 left-2 z-20 md:hidden">
               <SidebarTrigger />
             </div>
-            <div className="fixed top-16 right-4 z-20">
-              <NetworkStatus />
-            </div>
             <div className="flex-1 overflow-auto">{children}</div>
           </main>
         </div>

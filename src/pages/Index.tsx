@@ -106,7 +106,7 @@ const Index = () => {
 
   const TabBarComponent = useMemo(
     () => (
-      <div className="flex items-center justify-between px-4 py-2 bg-background border-b border-border">
+      <div className="flex items-center justify-between px-4 py-1 bg-background border-b border-border">
         <TabBar
           tabs={tabs}
           onSelectTab={handleSelectTab}
@@ -151,15 +151,7 @@ const Index = () => {
               <FileUpload onFileLoaded={handleFileLoaded} maxFileSizeMB={100} />
             </div>
           ) : activeTab ? (
-            <div className="w-full h-full overflow-auto p-4">
-              <div className="flex justify-end mb-4">
-                <Button
-                  variant="outline"
-                  onClick={() => handleCloseTab(activeTab.id)}
-                >
-                  Close Tab
-                </Button>
-              </div>
+            <div className="w-full h-full overflow-auto">
               <SimplePDFViewer url={activeTab.document.url} />
             </div>
           ) : null}

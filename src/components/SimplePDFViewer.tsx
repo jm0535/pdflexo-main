@@ -267,10 +267,20 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             canvasContext: context,
             viewport: viewport,
           }).promise;
-        } catch (renderErr) {
-          console.error("Error during page render:", renderErr);
+          
+          // Remove any extra space that might be added
+          canvas.style.marginBottom = '0';
+          
+          if (containerRef.current) {
+            // Ensure container fits content properly
+            if (viewMode === 'single') {
+              containerRef.current.style.height = `${viewport.height}px`;
+            }
+          }
+        } catch (err) {
+          console.error("Error rendering page:", err);
           if (isMounted) {
-            setError("Error rendering PDF page. Please try again.");
+            setError("Failed to render page. Please try again.");
           }
         }
       } catch (err) {
@@ -286,7 +296,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
     return () => {
       isMounted = false;
     };
-  }, [currentPage, loading, numPages, scale, calculateScale, rotation, fitToWidth]);
+  }, [currentPage, scale, rotation, fitToWidth, calculateScale, loading, numPages, viewMode]);
 
   // Recalculate scale on window resize
   useEffect(() => {
@@ -717,9 +727,9 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
                   setCurrentPage(page);
                 }
               }}
-              className="w-20 text-center font-medium text-lg"
+              className="w-16 text-center font-medium"
             />
-            <span className="mx-2 text-lg font-medium">/ {numPages}</span>
+            <span className="mx-2 font-medium">/ {numPages}</span>
           </div>
           
           <Button 
@@ -742,7 +752,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             className={`font-medium ${showSidebar && sidebarTab === 'outline' ? "bg-primary text-white" : ""}`}
             title="Outline"
           >
-            <List className="h-5 w-5 mr-1" />
+            <List className="h-4 w-4 mr-1" />
             <span>Outline</span>
           </Button>
           
@@ -753,7 +763,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             className={`font-medium ${showSidebar && sidebarTab === 'bookmarks' ? "bg-primary text-white" : ""}`}
             title="Bookmarks"
           >
-            <Bookmark className="h-5 w-5 mr-1" />
+            <Bookmark className="h-4 w-4 mr-1" />
             <span>Bookmarks</span>
           </Button>
           
@@ -764,7 +774,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             className={`font-medium ${showSidebar && sidebarTab === 'thumbnails' ? "bg-primary text-white" : ""}`}
             title="Thumbnails"
           >
-            <Grid2X2 className="h-5 w-5 mr-1" />
+            <Grid2X2 className="h-4 w-4 mr-1" />
             <span>Thumbnails</span>
           </Button>
         </div>
@@ -777,7 +787,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             title="Zoom Out"
             className="font-medium"
           >
-            <ZoomOut className="h-5 w-5 mr-1" />
+            <ZoomOut className="h-4 w-4 mr-1" />
             <span>-</span>
           </Button>
           
@@ -798,7 +808,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             title="Zoom In"
             className="font-medium"
           >
-            <ZoomIn className="h-5 w-5 mr-1" />
+            <ZoomIn className="h-4 w-4 mr-1" />
             <span>+</span>
           </Button>
           
@@ -809,7 +819,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             title="Rotate"
             className="font-medium"
           >
-            <RotateCw className="h-5 w-5 mr-1" />
+            <RotateCw className="h-4 w-4 mr-1" />
             <span>Rotate</span>
           </Button>
         </div>
@@ -842,7 +852,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             className={`font-medium ${viewMode === 'twoPages' ? "bg-primary text-white" : ""}`}
             title="Two Pages View"
           >
-            <SplitSquareVertical className="h-5 w-5 mr-1" />
+            <SplitSquareVertical className="h-4 w-4 mr-1" />
             <span>Two Pages</span>
           </Button>
           
@@ -853,7 +863,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             className="font-medium"
           >
-            <Maximize className="h-5 w-5 mr-1" />
+            <Maximize className="h-4 w-4 mr-1" />
             <span>Fullscreen</span>
           </Button>
         </div>
@@ -866,7 +876,7 @@ export const SimplePDFViewer = ({ url, onTotalPagesChange }: SimplePDFViewerProp
             className={`font-medium ${showSearch ? "bg-primary text-white" : ""}`}
             title="Search"
           >
-            <Search className="h-5 w-5 mr-1" />
+            <Search className="h-4 w-4 mr-1" />
             <span>Search</span>
           </Button>
         </div>

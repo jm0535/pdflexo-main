@@ -15,6 +15,7 @@ const Header: React.FC = () => {
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [zoomLevel, setZoomLevelState] = useState(1);
   const [isDark, setIsDark] = useState(true); // Initialize as true since we default to dark theme
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   
   useEffect(() => {
     const htmlElement = document.querySelector('html');
@@ -22,6 +23,18 @@ const Header: React.FC = () => {
     
     const initialZoom = parseFloat(document.body.style.zoom || '1');
     setZoomLevelState(initialZoom);
+
+    // Add online/offline event listeners
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
   
   const handleThemeToggle = () => {
@@ -82,6 +95,10 @@ const Header: React.FC = () => {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-medium tracking-tight text-foreground bg-gradient-to-r from-[#9b87f5] to-[#8B5CF6] dark:from-[#8B5CF6] dark:to-[#D946EF] bg-clip-text text-transparent">PDFlexo</h1>
               <Badge variant="outline" className="bg-[#D946EF]/10 text-[#D946EF] border-[#D946EF]/30 text-xs font-medium py-0 px-1.5">BETA</Badge>
+              <div className="flex items-center ml-2">
+                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'} mr-1`}></div>
+                <span className="text-xs text-muted-foreground">{isOnline ? 'Online' : 'Offline'}</span>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground hidden sm:block">The Modern Free & Open-Source PDF Editor and Reader for All Users!</p>
           </div>

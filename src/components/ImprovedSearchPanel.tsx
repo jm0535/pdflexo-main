@@ -2,7 +2,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { X, List } from "lucide-react";
 
-interface SearchPanelProps {
+interface ImprovedSearchPanelProps {
   showPanel: boolean;
   searchResults: any[];
   detailedResults: any[];
@@ -12,7 +12,7 @@ interface SearchPanelProps {
   onResultClick: (index: number, page: number) => void;
 }
 
-const SearchPanel: React.FC<SearchPanelProps> = ({
+const ImprovedSearchPanel: React.FC<ImprovedSearchPanelProps> = ({
   showPanel,
   searchResults,
   detailedResults,
@@ -28,36 +28,51 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
     0
   );
 
-  // Function to handle click with a direct DOM approach
+  // Direct click handler that forces page navigation
   const handleResultClick = (index: number, page: number) => {
-    console.log(`SearchPanel: Clicked on result ${index}, page ${page}`);
+    console.log(
+      `ImprovedSearchPanel: Clicked on result ${index}, page ${page}`
+    );
 
     // Call the parent handler
     onResultClick(index, page);
 
-    // Also try a direct approach after a delay
+    // Force direct navigation after a delay
     setTimeout(() => {
       try {
         // Try to directly navigate to the page
         const pageElement = document.getElementById(`pdf-canvas-page-${page}`);
         if (pageElement) {
           console.log(
-            `SearchPanel: Found page element for page ${page}, scrolling to it`
+            `ImprovedSearchPanel: Found page element for page ${page}, scrolling to it`
           );
           pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
         } else {
-          console.log(`SearchPanel: Page element for page ${page} not found`);
+          console.log(
+            `ImprovedSearchPanel: Page element for page ${page} not found`
+          );
+
+          // Try to find any canvas element for this page
+          const canvasElements = document.querySelectorAll("canvas");
+          console.log(
+            `ImprovedSearchPanel: Found ${canvasElements.length} canvas elements`
+          );
+
+          // Log all canvas IDs for debugging
+          canvasElements.forEach((canvas) => {
+            console.log(`ImprovedSearchPanel: Canvas ID: ${canvas.id}`);
+          });
         }
       } catch (err) {
         console.error("Error in direct navigation:", err);
       }
-    }, 500);
+    }, 800); // Use a longer delay
   };
 
   return (
     <div className="search-panel">
       <div className="search-panel-header">
-        <h3>Search Results</h3>
+        <h3>Search Results (Improved)</h3>
         <Button
           variant="ghost"
           size="sm"
@@ -107,4 +122,4 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
   );
 };
 
-export default SearchPanel;
+export default ImprovedSearchPanel;

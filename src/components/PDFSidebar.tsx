@@ -1,17 +1,16 @@
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { FileText, Scissors, Layers, Sparkles, Home, BookOpen, Languages, List, Search, FileQuestion, Moon, Sun, ChevronLeft, ChevronRight } from 'lucide-react';
-import { 
-  Sidebar, 
-  SidebarContent, 
+import {
+  Sidebar,
+  SidebarContent,
   SidebarFooter,
-  SidebarGroup, 
-  SidebarGroupContent, 
-  SidebarGroupLabel, 
-  SidebarHeader, 
-  SidebarMenu, 
-  SidebarMenuButton, 
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
   SidebarOverlay,
   SidebarTrigger,
@@ -40,12 +39,14 @@ const aiToolsItems = [
 const PDFSidebar: React.FC = () => {
   const location = useLocation();
   const { expanded, isMobileView, isOpen, toggleExpanded } = useSidebar();
-  const [isDark, setIsDark] = React.useState(true); // Initialize as true since we default to dark theme
-  
-  React.useEffect(() => {
+  const [isDark, setIsDark] = useState(false); // Initialize with a default value
+
+  // Initialize the dark mode state in useEffect, not during render
+  useEffect(() => {
     const htmlElement = document.querySelector('html');
-    setIsDark(htmlElement?.classList.contains('dark') || false);
-    
+    const isDarkMode = htmlElement?.classList.contains('dark') || false;
+    setIsDark(isDarkMode);
+
     // Add event listener to track theme changes from other sources
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -55,22 +56,22 @@ const PDFSidebar: React.FC = () => {
         }
       });
     });
-    
+
     const htmlEl = document.querySelector('html');
     if (htmlEl) {
       observer.observe(htmlEl, { attributes: true });
     }
-    
+
     return () => {
       observer.disconnect();
     };
   }, []);
-  
+
   const handleThemeToggle = () => {
     const newIsDark = toggleTheme();
     setIsDark(newIsDark);
     toast.success(newIsDark ? "Dark theme activated" : "Light theme activated");
-    
+
     // Dispatch a custom event for components to react to theme changes
     window.dispatchEvent(new CustomEvent('themeChanged', { detail: { isDark: newIsDark } }));
   };
@@ -92,9 +93,9 @@ const PDFSidebar: React.FC = () => {
           <Link to="/" className="flex items-center justify-center">
             <FileText className={`${expanded || isMobileView ? 'w-6 h-6' : 'w-8 h-8'} text-[#9b87f5] dark:text-[#8B5CF6]`} />
           </Link>
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={toggleExpanded}
             className={`${isMobileView ? 'hidden' : 'flex'}`}
             aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
@@ -116,7 +117,7 @@ const PDFSidebar: React.FC = () => {
                 {mainNavItems.map((item) => (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton asChild>
-                      <Link 
+                      <Link
                         to={item.path}
                         className={isActive(item.path) ? 'bg-accent text-accent-foreground' : ''}
                       >
@@ -138,7 +139,7 @@ const PDFSidebar: React.FC = () => {
                   {aiToolsItems.map((item) => (
                     <SidebarMenuItem key={item.path}>
                       <SidebarMenuButton asChild>
-                        <Link 
+                        <Link
                           to={item.path}
                           className={location.pathname === item.path ? 'bg-accent text-accent-foreground' : ''}
                         >
@@ -160,9 +161,9 @@ const PDFSidebar: React.FC = () => {
               <div className="text-xs text-muted-foreground">
                 PDFlexo v1.0.0
               </div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={handleThemeToggle}
                 aria-label="Toggle theme"
                 className="ml-2"
@@ -175,9 +176,9 @@ const PDFSidebar: React.FC = () => {
               </Button>
             </div>
           ) : (
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleThemeToggle}
               aria-label="Toggle theme"
               className="w-full flex justify-center"

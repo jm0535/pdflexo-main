@@ -1,9 +1,10 @@
-import React, { useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import { PDFDocument } from '@/lib/types';
-import PDFPage from './PDFPage';
-import AnnotationRenderer from './AnnotationRenderer';
-import { shouldShowSecondaryPage } from '@/lib/pdfUtils/viewUtils';
+import React, { useRef, useEffect, useState } from "react";
+import * as pdfjsLib from "pdfjs-dist";
+import { PDFDocument } from "@/lib/types";
+import PDFPage from "./PDFPage";
+import AnnotationRenderer from "./AnnotationRenderer";
+import { shouldShowSecondaryPage } from "@/lib/pdfUtils/viewUtils";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 // Define types locally to match what AnnotationRenderer expects
 interface HighlightArea {
@@ -31,13 +32,16 @@ interface PDFPageContainerProps {
   pdfDocument: pdfjsLib.PDFDocumentProxy | null;
   document: PDFDocument;
   currentPage: number;
-  viewMode: 'single' | 'dual';
+  viewMode: "single" | "dual";
   isAnimating: boolean;
-  direction: 'next' | 'prev';
+  direction: "next" | "prev";
   highlightedAreas: PageHighlight[];
   signatures: Signature[];
   onMouseUp: (e: React.MouseEvent, pageOffset?: number) => void;
-  onCanvasClick: (e: React.MouseEvent<HTMLCanvasElement>, pageOffset?: number) => void;
+  onCanvasClick: (
+    e: React.MouseEvent<HTMLCanvasElement>,
+    pageOffset?: number
+  ) => void;
 }
 
 const PDFPageContainer: React.FC<PDFPageContainerProps> = ({
@@ -50,28 +54,95 @@ const PDFPageContainer: React.FC<PDFPageContainerProps> = ({
   highlightedAreas,
   signatures,
   onMouseUp,
-  onCanvasClick
+  onCanvasClick,
 }) => {
   const primaryAnnotationCanvasRef = useRef<HTMLCanvasElement>(null);
   const secondaryAnnotationCanvasRef = useRef<HTMLCanvasElement>(null);
-  
-  const showSecondaryPage = shouldShowSecondaryPage(viewMode, currentPage, pdfDocument?.numPages || 0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isSmallMobile = useMediaQuery("(max-width: 480px)");
+
+  const showSecondaryPage = shouldShowSecondaryPage(
+    viewMode,
+    currentPage,
+    pdfDocument?.numPages || 0
+  );
   const secondaryPageNumber = currentPage + 1;
 
+  // Update container width on resize
+  useEffect(() => {
+    const updateContainerWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+    };
+
+    // Initial width
+    updateContainerWidth();
+
+    // Add resize listener
+    window.addEventListener("resize", updateContainerWidth);
+
+    // Cleanup
+    return () => window.removeEventListener("resize", updateContainerWidth);
+  }, []);
+
   // Wrapper functions to pass currentPage to annotation handlers
-  const handleMouseUpWrapper = (e: React.MouseEvent, pageOffset: number = 0) => {
+  const handleMouseUpWrapper = (
+    e: React.MouseEvent,
+    pageOffset: number = 0
+  ) => {
     onMouseUp(e, pageOffset);
   };
 
-  const handleCanvasClickWrapper = (e: React.MouseEvent<HTMLCanvasElement>, pageOffset: number = 0) => {
+  const handleCanvasClickWrapper = (
+    e: React.MouseEvent<HTMLCanvasElement>,
+    pageOffset: number = 0
+  ) => {
     onCanvasClick(e, pageOffset);
   };
 
+  // Calculate optimal container width based on view mode and screen size
+  const getContainerWidth = () => {
+    if (isSmallMobile) {
+      return "100%";
+    }
+    if (isMobile) {
+      return viewMode === "dual" ? "100%" : "90%";
+    }
+    return viewMode === "dual" ? "90%" : "70%";
+  };
+
   return (
-    <div className="pdf-viewer-container">
-      <div className={`pdf-viewer ${viewMode === 'dual' ? 'dual-mode' : 'single-mode'}`}>
+    <div ref={containerRef} className="pdf-viewer-container">
+      <div
+        className={`pdf-viewer ${
+          viewMode === "dual" ? "dual-mode" : "single-mode"
+        }`}
+        style={{
+          width: getContainerWidth(),
+          backgroundColor: "#f8f9fa",
+          borderRadius: "8px",
+          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
+          padding: "24px",
+          margin: "0 auto",
+        }}
+      >
         {/* Primary Page */}
-        <div className="pdf-page-outer-wrapper">
+        <div
+          className="pdf-page-outer-wrapper"
+          style={{
+            backgroundColor: "#ffffff",
+            borderRadius: "8px",
+            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.15)",
+            padding: "16px",
+            margin: "0",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
           <div className="pdf-page-wrapper">
             <PDFPage
               pdfDocument={pdfDocument}
@@ -94,7 +165,19 @@ const PDFPageContainer: React.FC<PDFPageContainerProps> = ({
         </div>
         {/* Secondary Page (only in dual mode) */}
         {showSecondaryPage && (
-          <div className="pdf-page-outer-wrapper">
+          <div
+            className="pdf-page-outer-wrapper"
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "8px",
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.15)",
+              padding: "16px",
+              margin: "0",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
             <div className="pdf-page-wrapper">
               <PDFPage
                 pdfDocument={pdfDocument}

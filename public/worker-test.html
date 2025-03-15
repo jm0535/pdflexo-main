@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF.js Worker Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      h1 {
+        color: #333;
+      }
+      .status {
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      .success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      .error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      .info {
+        background-color: #cce5ff;
+        color: #004085;
+        border: 1px solid #b8daff;
+      }
+      button {
+        background-color: #4caf50;
+        border: none;
+        color: white;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 10px 2px;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      pre {
+        background-color: #f5f5f5;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PDF.js Worker Test</h1>
+
+    <div id="status" class="status info">Checking PDF.js worker status...</div>
+
+    <button id="testLocalWorker">Test Local Worker</button>
+    <button id="testCdnWorker">Test CDN Worker</button>
+
+    <h2>Console Output:</h2>
+    <pre id="console"></pre>
+
+    <script>
+      // Log to both console and our UI
+      function log(message, type = "info") {
+        const consoleElem = document.getElementById("console");
+        const time = new Date().toLocaleTimeString();
+        consoleElem.textContent += `[${time}] ${message}\n`;
+        console.log(message);
+
+        // Auto-scroll to bottom
+        consoleElem.scrollTop = consoleElem.scrollHeight;
+      }
+
+      function updateStatus(message, type) {
+        const statusElem = document.getElementById("status");
+        statusElem.textContent = message;
+        statusElem.className = `status ${type}`;
+      }
+
+      // Check if PDF.js is loaded
+      if (typeof pdfjsLib === "undefined") {
+        updateStatus("PDF.js library not loaded!", "error");
+        log("PDF.js library not loaded!");
+      } else {
+        log("PDF.js library loaded successfully");
+        updateStatus("PDF.js library loaded successfully", "success");
+      }
+
+      // Test local worker
+      document
+        .getElementById("testLocalWorker")
+        .addEventListener("click", function () {
+          log("Testing local worker...");
+          updateStatus("Testing local worker...", "info");
+
+          try {
+            // Set worker source to local path
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
+            log(
+              `Set worker source to: ${pdfjsLib.GlobalWorkerOptions.workerSrc}`
+            );
+
+            // Create a simple PDF document to test the worker
+            const loadingTask = pdfjsLib.getDocument({
+              data: new Uint8Array([
+                37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10,
+                49, 32, 48, 32, 111, 98, 106, 10, 60, 60, 47, 84, 121, 112, 101,
+                47, 67, 97, 116, 97, 108, 111, 103, 47, 80, 97, 103, 101, 115,
+                32, 50, 32, 48, 32, 82, 62, 62, 10, 101, 110, 100, 111, 98, 106,
+                10, 50, 32, 48, 32, 111, 98, 106, 10, 60, 60, 47, 84, 121, 112,
+                101, 47, 80, 97, 103, 101, 115, 47, 75, 105, 100, 115, 91, 51,
+                32, 48, 32, 82, 93, 47, 67, 111, 117, 110, 116, 32, 49, 62, 62,
+                10, 101, 110, 100, 111, 98, 106, 10, 51, 32, 48, 32, 111, 98,
+                106, 10, 60, 60, 47, 84, 121, 112, 101, 47, 80, 97, 103, 101,
+                47, 80, 97, 114, 101, 110, 116, 32, 50, 32, 48, 32, 82, 47, 82,
+                101, 115, 111, 117, 114, 99, 101, 115, 60, 60, 47, 70, 111, 110,
+                116, 60, 60, 47, 70, 49, 32, 52, 32, 48, 32, 82, 62, 62, 62, 62,
+                47, 77, 101, 100, 105, 97, 66, 111, 120, 91, 48, 32, 48, 32, 53,
+                57, 53, 32, 56, 52, 50, 93, 47, 67, 111, 110, 116, 101, 110,
+                116, 115, 32, 53, 32, 48, 32, 82, 62, 62, 10, 101, 110, 100,
+                111, 98, 106, 10, 52, 32, 48, 32, 111, 98, 106, 10, 60, 60, 47,
+                84, 121, 112, 101, 47, 70, 111, 110, 116, 47, 83, 117, 98, 116,
+                121, 112, 101, 47, 84, 121, 112, 101, 49, 47, 66, 97, 115, 101,
+                70, 111, 110, 116, 47, 72, 101, 108, 118, 101, 116, 105, 99, 97,
+                62, 62, 10, 101, 110, 100, 111, 98, 106, 10, 53, 32, 48, 32,
+                111, 98, 106, 10, 60, 60, 47, 76, 101, 110, 103, 116, 104, 32,
+                52, 52, 62, 62, 10, 115, 116, 114, 101, 97, 109, 10, 66, 84, 10,
+                47, 70, 49, 32, 49, 56, 32, 84, 102, 10, 49, 32, 48, 32, 48, 32,
+                49, 32, 49, 48, 48, 32, 55, 48, 48, 32, 84, 109, 10, 40, 72,
+                101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 41, 84, 106, 10,
+                69, 84, 10, 101, 110, 100, 115, 116, 114, 101, 97, 109, 10, 101,
+                110, 100, 111, 98, 106, 10, 120, 114, 101, 102, 10, 48, 32, 54,
+                10, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 32, 54, 53, 53, 51,
+                53, 32, 102, 10, 48, 48, 48, 48, 48, 48, 48, 48, 49, 48, 32, 48,
+                48, 48, 48, 48, 32, 110, 10, 48, 48, 48, 48, 48, 48, 48, 48, 55,
+                57, 32, 48, 48, 48, 48, 48, 32, 110, 10, 48, 48, 48, 48, 48, 48,
+                48, 49, 55, 51, 32, 48, 48, 48, 48, 48, 32, 110, 10, 48, 48, 48,
+                48, 48, 48, 48, 51, 48, 49, 32, 48, 48, 48, 48, 48, 32, 110, 10,
+                48, 48, 48, 48, 48, 48, 48, 51, 56, 48, 32, 48, 48, 48, 48, 48,
+                32, 110, 10, 116, 114, 97, 105, 108, 101, 114, 10, 60, 60, 47,
+                83, 105, 122, 101, 32, 54, 47, 82, 111, 111, 116, 32, 49, 32,
+                48, 32, 82, 47, 73, 68, 91, 60, 51, 52, 56, 56, 57, 51, 53, 52,
+                52, 56, 56, 56, 56, 52, 52, 57, 53, 52, 52, 56, 56, 56, 56, 56,
+                52, 52, 57, 53, 52, 52, 56, 56, 56, 56, 56, 52, 52, 57, 62, 60,
+                51, 52, 56, 56, 57, 51, 53, 52, 52, 56, 56, 56, 56, 52, 52, 57,
+                53, 52, 52, 56, 56, 56, 56, 56, 52, 52, 57, 53, 52, 52, 56, 56,
+                56, 56, 56, 52, 52, 57, 62, 93, 62, 62, 10, 115, 116, 97, 114,
+                116, 120, 114, 101, 102, 10, 53, 54, 52, 10, 37, 37, 69, 79, 70,
+              ]),
+            });
+
+            log("Created PDF loading task");
+
+            loadingTask.promise
+              .then(function (pdf) {
+                log("PDF loaded successfully with local worker!", "success");
+                updateStatus("Local worker is working correctly!", "success");
+
+                // Get page count
+                log(`PDF has ${pdf.numPages} page(s)`);
+
+                // Clean up
+                pdf.destroy();
+              })
+              .catch(function (error) {
+                log(`Error loading PDF with local worker: ${error.message}`);
+                updateStatus("Local worker test failed!", "error");
+              });
+          } catch (error) {
+            log(`Error setting up local worker test: ${error.message}`);
+            updateStatus("Local worker test failed!", "error");
+          }
+        });
+
+      // Test CDN worker
+      document
+        .getElementById("testCdnWorker")
+        .addEventListener("click", function () {
+          log("Testing CDN worker...");
+          updateStatus("Testing CDN worker...", "info");
+
+          try {
+            // Set worker source to CDN
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+              "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+            log(
+              `Set worker source to: ${pdfjsLib.GlobalWorkerOptions.workerSrc}`
+            );
+
+            // Create a simple PDF document to test the worker
+            const loadingTask = pdfjsLib.getDocument({
+              data: new Uint8Array([
+                37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10,
+                49, 32, 48, 32, 111, 98, 106, 10, 60, 60, 47, 84, 121, 112, 101,
+                47, 67, 97, 116, 97, 108, 111, 103, 47, 80, 97, 103, 101, 115,
+                32, 50, 32, 48, 32, 82, 62, 62, 10, 101, 110, 100, 111, 98, 106,
+                10, 50, 32, 48, 32, 111, 98, 106, 10, 60, 60, 47, 84, 121, 112,
+                101, 47, 80, 97, 103, 101, 115, 47, 75, 105, 100, 115, 91, 51,
+                32, 48, 32, 82, 93, 47, 67, 111, 117, 110, 116, 32, 49, 62, 62,
+                10, 101, 110, 100, 111, 98, 106, 10, 51, 32, 48, 32, 111, 98,
+                106, 10, 60, 60, 47, 84, 121, 112, 101, 47, 80, 97, 103, 101,
+                47, 80, 97, 114, 101, 110, 116, 32, 50, 32, 48, 32, 82, 47, 82,
+                101, 115, 111, 117, 114, 99, 101, 115, 60, 60, 47, 70, 111, 110,
+                116, 60, 60, 47, 70, 49, 32, 52, 32, 48, 32, 82, 62, 62, 62, 62,
+                47, 77, 101, 100, 105, 97, 66, 111, 120, 91, 48, 32, 48, 32, 53,
+                57, 53, 32, 56, 52, 50, 93, 47, 67, 111, 110, 116, 101, 110,
+                116, 115, 32, 53, 32, 48, 32, 82, 62, 62, 10, 101, 110, 100,
+                111, 98, 106, 10, 52, 32, 48, 32, 111, 98, 106, 10, 60, 60, 47,
+                84, 121, 112, 101, 47, 70, 111, 110, 116, 47, 83, 117, 98, 116,
+                121, 112, 101, 47, 84, 121, 112, 101, 49, 47, 66, 97, 115, 101,
+                70, 111, 110, 116, 47, 72, 101, 108, 118, 101, 116, 105, 99, 97,
+                62, 62, 10, 101, 110, 100, 111, 98, 106, 10, 53, 32, 48, 32,
+                111, 98, 106, 10, 60, 60, 47, 76, 101, 110, 103, 116, 104, 32,
+                52, 52, 62, 62, 10, 115, 116, 114, 101, 97, 109, 10, 66, 84, 10,
+                47, 70, 49, 32, 49, 56, 32, 84, 102, 10, 49, 32, 48, 32, 48, 32,
+                49, 32, 49, 48, 48, 32, 55, 48, 48, 32, 84, 109, 10, 40, 72,
+                101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 41, 84, 106, 10,
+                69, 84, 10, 101, 110, 100, 115, 116, 114, 101, 97, 109, 10, 101,
+                110, 100, 111, 98, 106, 10, 120, 114, 101, 102, 10, 48, 32, 54,
+                10, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 32, 54, 53, 53, 51,
+                53, 32, 102, 10, 48, 48, 48, 48, 48, 48, 48, 48, 49, 48, 32, 48,
+                48, 48, 48, 48, 32, 110, 10, 48, 48, 48, 48, 48, 48, 48, 48, 55,
+                57, 32, 48, 48, 48, 48, 48, 32, 110, 10, 48, 48, 48, 48, 48, 48,
+                48, 49, 55, 51, 32, 48, 48, 48, 48, 48, 32, 110, 10, 48, 48, 48,
+                48, 48, 48, 48, 51, 48, 49, 32, 48, 48, 48, 48, 48, 32, 110, 10,
+                48, 48, 48, 48, 48, 48, 48, 51, 56, 48, 32, 48, 48, 48, 48, 48,
+                32, 110, 10, 116, 114, 97, 105, 108, 101, 114, 10, 60, 60, 47,
+                83, 105, 122, 101, 32, 54, 47, 82, 111, 111, 116, 32, 49, 32,
+                48, 32, 82, 47, 73, 68, 91, 60, 51, 52, 56, 56, 57, 51, 53, 52,
+                52, 56, 56, 56, 56, 52, 52, 57, 53, 52, 52, 56, 56, 56, 56, 56,
+                52, 52, 57, 53, 52, 52, 56, 56, 56, 56, 56, 52, 52, 57, 62, 60,
+                51, 52, 56, 56, 57, 51, 53, 52, 52, 56, 56, 56, 56, 52, 52, 57,
+                53, 52, 52, 56, 56, 56, 56, 56, 52, 52, 57, 53, 52, 52, 56, 56,
+                56, 56, 56, 52, 52, 57, 62, 93, 62, 62, 10, 115, 116, 97, 114,
+                116, 120, 114, 101, 102, 10, 53, 54, 52, 10, 37, 37, 69, 79, 70,
+              ]),
+            });
+
+            log("Created PDF loading task");
+
+            loadingTask.promise
+              .then(function (pdf) {
+                log("PDF loaded successfully with CDN worker!");
+                updateStatus("CDN worker is working correctly!", "success");
+
+                // Get page count
+                log(`PDF has ${pdf.numPages} page(s)`);
+
+                // Clean up
+                pdf.destroy();
+              })
+              .catch(function (error) {
+                log(`Error loading PDF with CDN worker: ${error.message}`);
+                updateStatus("CDN worker test failed!", "error");
+              });
+          } catch (error) {
+            log(`Error setting up CDN worker test: ${error.message}`);
+            updateStatus("CDN worker test failed!", "error");
+          }
+        });
+    </script>
+  </body>
+</html>

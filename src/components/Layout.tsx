@@ -1,9 +1,9 @@
-
-import React, { useEffect, useState } from 'react';
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
-import PDFSidebar from '@/components/PDFSidebar';
+import React, { useEffect, useState } from "react";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import PDFSidebar from "@/components/PDFSidebar";
+import NetworkStatus from "@/components/NetworkStatus";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,28 +11,34 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, hideFooter = false }) => {
-  const [isDark, setIsDark] = useState(true); // Initialize as true since we default to dark theme
-  
+  const [isDark, setIsDark] = useState(false); // Initialize with a default value
+
   useEffect(() => {
     // Initialize the dark mode state
-    const htmlElement = document.querySelector('html');
-    setIsDark(htmlElement?.classList.contains('dark') || false);
-    
+    const htmlElement = document.querySelector("html");
+    const isDarkMode = htmlElement?.classList.contains("dark") || false;
+    setIsDark(isDarkMode);
+
     // Listen for theme changes
     const handleThemeChange = (e: CustomEvent<{ isDark: boolean }>) => {
       setIsDark(e.detail.isDark);
     };
-    
-    window.addEventListener('themeChanged', handleThemeChange as EventListener);
-    
+
+    window.addEventListener("themeChanged", handleThemeChange as EventListener);
+
     return () => {
-      window.removeEventListener('themeChanged', handleThemeChange as EventListener);
+      window.removeEventListener(
+        "themeChanged",
+        handleThemeChange as EventListener
+      );
     };
   }, []);
-  
+
   return (
     <SidebarProvider>
-      <div className={`min-h-screen flex flex-col bg-background w-full transition-colors duration-200`}>
+      <div
+        className={`min-h-screen flex flex-col bg-background w-full transition-colors duration-200`}
+      >
         <Header />
         <div className="flex flex-1 overflow-hidden relative">
           <PDFSidebar />
@@ -40,9 +46,10 @@ const Layout: React.FC<LayoutProps> = ({ children, hideFooter = false }) => {
             <div className="fixed top-16 left-2 z-20 md:hidden">
               <SidebarTrigger />
             </div>
-            <div className="flex-1 overflow-auto">
-              {children}
+            <div className="fixed top-16 right-4 z-20">
+              <NetworkStatus />
             </div>
+            <div className="flex-1 overflow-auto">{children}</div>
           </main>
         </div>
         {!hideFooter && <Footer />}

@@ -1,7 +1,7 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-import './PDFStyles.css';
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import * as pdfjsLib from "pdfjs-dist";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import "./PDFStyles.css";
 
 // Add passive: false to event listener options to enable preventDefault() on touch events
 declare global {
@@ -15,9 +15,12 @@ interface PDFPageProps {
   pageNumber: number;
   documentName: string;
   onMouseUp: (e: React.MouseEvent, pageOffset?: number) => void;
-  onCanvasClick: (e: React.MouseEvent<HTMLCanvasElement>, pageOffset?: number) => void;
+  onCanvasClick: (
+    e: React.MouseEvent<HTMLCanvasElement>,
+    pageOffset?: number
+  ) => void;
   isAnimating: boolean;
-  direction: 'next' | 'prev';
+  direction: "next" | "prev";
   pageOffset?: number;
   onPageRendered?: () => void;
 }
@@ -37,15 +40,15 @@ const PDFPage: React.FC<PDFPageProps> = ({
   isAnimating,
   direction,
   pageOffset = 0,
-  onPageRendered
+  onPageRendered,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const annotationCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pageScale, setPageScale] = useState(1.5);
-  const isMobile = useMediaQuery('(max-width: 768px)');
-  const isSmallMobile = useMediaQuery('(max-width: 480px)');
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isSmallMobile = useMediaQuery("(max-width: 480px)");
   const [isRendered, setIsRendered] = useState(false);
 
   // State for panning functionality
@@ -55,57 +58,69 @@ const PDFPage: React.FC<PDFPageProps> = ({
   const [lastPanOffset, setLastPanOffset] = useState({ x: 0, y: 0 });
 
   // Handle panning start
-  const handlePanStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (isAnimating) return;
+  const handlePanStart = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (isAnimating) return;
 
-    let clientX: number;
-    let clientY: number;
+      let clientX: number;
+      let clientY: number;
 
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
+      if ("touches" in e) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
 
-    setIsPanning(true);
-    setStartPanPosition({ x: clientX, y: clientY });
-  }, [isAnimating]);
+      setIsPanning(true);
+      setStartPanPosition({ x: clientX, y: clientY });
+    },
+    [isAnimating]
+  );
 
-  const handleTouchPanStart = useCallback((e: React.TouchEvent) => {
-    handlePanStart(e);
-  }, [handlePanStart]);
+  const handleTouchPanStart = useCallback(
+    (e: React.TouchEvent) => {
+      handlePanStart(e);
+    },
+    [handlePanStart]
+  );
 
   // Handle panning move
-  const handlePanMove = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!isPanning) return;
+  const handlePanMove = useCallback(
+    (e: MouseEvent | TouchEvent) => {
+      if (!isPanning) return;
 
-    e.preventDefault();
+      e.preventDefault();
 
-    let clientX: number;
-    let clientY: number;
+      let clientX: number;
+      let clientY: number;
 
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
+      if ("touches" in e) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
 
-    const deltaX = clientX - startPanPosition.x;
-    const deltaY = clientY - startPanPosition.y;
+      const deltaX = clientX - startPanPosition.x;
+      const deltaY = clientY - startPanPosition.y;
 
-    setPanOffset({
-      x: lastPanOffset.x + deltaX,
-      y: lastPanOffset.y + deltaY
-    });
-  }, [isPanning, startPanPosition, lastPanOffset]);
+      setPanOffset({
+        x: lastPanOffset.x + deltaX,
+        y: lastPanOffset.y + deltaY,
+      });
+    },
+    [isPanning, startPanPosition, lastPanOffset]
+  );
 
-  const handleTouchPanMove = useCallback((e: TouchEvent) => {
-    handlePanMove(e);
-  }, [handlePanMove]);
+  const handleTouchPanMove = useCallback(
+    (e: TouchEvent) => {
+      handlePanMove(e);
+    },
+    [handlePanMove]
+  );
 
   // Handle panning end
   const handlePanEnd = useCallback(() => {
@@ -129,17 +144,19 @@ const PDFPage: React.FC<PDFPageProps> = ({
       const handleTouchEnd = () => handlePanEnd();
 
       if (isPanning) {
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('touchmove', handleTouchMove, { passive: false });
-        window.addEventListener('mouseup', handleMouseUp);
-        window.addEventListener('touchend', handleTouchEnd);
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("touchmove", handleTouchMove, {
+          passive: false,
+        });
+        window.addEventListener("mouseup", handleMouseUp);
+        window.addEventListener("touchend", handleTouchEnd);
       }
 
       return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('touchmove', handleTouchMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-        window.removeEventListener('touchend', handleTouchEnd);
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("touchmove", handleTouchMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("touchend", handleTouchEnd);
       };
     }
   }, [isPanning, handlePanMove, handlePanEnd]);
@@ -147,7 +164,10 @@ const PDFPage: React.FC<PDFPageProps> = ({
   // Update transform CSS variable when panOffset changes
   useEffect(() => {
     if (containerRef.current) {
-      containerRef.current.style.setProperty('--transform-value', `translate(${panOffset.x}px, ${panOffset.y}px)`);
+      containerRef.current.style.setProperty(
+        "--transform-value",
+        `translate(${panOffset.x}px, ${panOffset.y}px)`
+      );
     }
   }, [panOffset]);
 
@@ -155,33 +175,40 @@ const PDFPage: React.FC<PDFPageProps> = ({
   useEffect(() => {
     let isMounted = true;
     let renderTask: pdfjsLib.RenderTask | null = null;
-    let textLayerTask: { promise: Promise<void>; cancel?: () => void } | null = null;
+    let textLayerTask: { promise: Promise<void>; cancel?: () => void } | null =
+      null;
 
     const renderPage = async () => {
       if (!pdfDocument || !canvasRef.current || !isMounted) {
-        console.log('Cannot render page - missing document or canvas');
+        console.log("Cannot render page - missing document or canvas");
         return;
       }
 
       try {
         console.log(`Rendering page ${pageNumber} of document`);
-        // Get the page object
-        const page = await pdfDocument.getPage(pageNumber);
+        // Get the page object with error handling
+        const page = await pdfDocument.getPage(pageNumber).catch((err) => {
+          console.error(`Error getting page ${pageNumber}:`, err);
+          throw new Error(`Failed to load page ${pageNumber}`);
+        });
         console.log(`Page ${pageNumber} retrieved successfully`);
 
         // Get device pixel ratio for high-DPI rendering
         const devicePixelRatio = window.devicePixelRatio || 1;
 
-        // Calculate scale to fit A4 width
-        const containerWidth = containerRef.current?.clientWidth || window.innerWidth * 0.8;
+        // Calculate scale to fit A4 width with improved quality
+        const containerWidth =
+          containerRef.current?.clientWidth || window.innerWidth * 0.8;
         const scaleToFitWidth = containerWidth / A4_WIDTH_PT;
 
-        // Use a scale that maintains the A4 aspect ratio but increase it for better quality
-        const baseScale = scaleToFitWidth * 1.5; // Increase scale for better quality
+        // Use a higher scale for better quality while maintaining performance
+        const baseScale = scaleToFitWidth * 2.5; // Increased scale for better quality
 
         // Create a viewport with the calculated scale
         const viewport = page.getViewport({ scale: baseScale });
-        console.log(`Viewport created with width: ${viewport.width}, height: ${viewport.height}`);
+        console.log(
+          `Viewport created with width: ${viewport.width}, height: ${viewport.height}`
+        );
 
         // Get the canvas element
         const canvas = canvasRef.current;
@@ -190,7 +217,7 @@ const PDFPage: React.FC<PDFPageProps> = ({
         const scaledWidth = Math.floor(viewport.width * devicePixelRatio);
         const scaledHeight = Math.floor(viewport.height * devicePixelRatio);
 
-        // Reset the canvas
+        // Reset the canvas with improved settings
         canvas.width = scaledWidth;
         canvas.height = scaledHeight;
 
@@ -199,83 +226,146 @@ const PDFPage: React.FC<PDFPageProps> = ({
         canvas.style.height = `${Math.floor(viewport.height)}px`;
 
         // Force canvas to be visible with important styles
-        canvas.style.display = 'block';
-        canvas.style.visibility = 'visible';
-        canvas.style.opacity = '1';
-        canvas.style.backgroundColor = '#FFFFFF';
+        canvas.style.display = "block";
+        canvas.style.visibility = "visible";
+        canvas.style.opacity = "1";
+        canvas.style.backgroundColor = "#FFFFFF";
+        canvas.style.imageRendering = "high-quality";
+        canvas.style.imageRendering = "-webkit-optimize-contrast";
+        canvas.style.imageRendering = "crisp-edges";
+        canvas.style.boxShadow = "0 2px 10px rgba(0, 0, 0, 0.1)";
+        canvas.style.borderRadius = "4px";
 
-        // Get the 2D rendering context
-        const context = canvas.getContext('2d', {
+        // Get the 2D rendering context with optimized settings
+        const context = canvas.getContext("2d", {
           alpha: false,
-          willReadFrequently: false
+          willReadFrequently: false,
+          desynchronized: true, // Enable desynchronized hint for better performance
+          colorSpace: "srgb", // Use sRGB color space for better color accuracy
         });
 
         if (!context) {
-          throw new Error('Could not get canvas context');
+          throw new Error("Could not get canvas context");
         }
 
         // Clear the canvas with white background
-        context.fillStyle = '#FFFFFF';
+        context.fillStyle = "#FFFFFF";
         context.fillRect(0, 0, scaledWidth, scaledHeight);
 
         // Scale context to account for device pixel ratio
         context.scale(devicePixelRatio, devicePixelRatio);
 
-        // Create rendering context with specific options for better compatibility
+        // Apply anti-aliasing for smoother text
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+
+        // Create rendering context with enhanced options for better quality
         const renderContext = {
           canvasContext: context,
           viewport: viewport,
-          enableWebGL: false,
+          enableWebGL: true, // Enable WebGL for better performance
           renderInteractiveForms: true,
-          intent: 'display'
+          intent: "display",
+          // Add quality settings
+          imageResourcesPath:
+            "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/images/",
+          // Add rendering optimizations
+          disableFontFace: false,
+          disableStream: false,
+          disableAutoFetch: false,
+          disableRange: false,
+          // Add memory management
+          maxImageSize: 10485760, // 10MB
+          maxCanvasPixels: 16777216, // 4096x4096
+          // Add compression
+          compress: true,
+          isOffscreenCanvas: false,
+          canvasFactory: null,
+          backgroundColorToReplace: null,
+          nativeImageDecoderSupport: "display",
         };
 
-        // Start rendering
-        console.log('Starting page render');
+        // Start rendering with progress tracking
+        console.log("Starting page render");
         renderTask = page.render(renderContext);
 
-        // Wait for rendering to complete
-        await renderTask.promise;
-        console.log('Page render completed successfully');
+        // Add progress callback for rendering
+        renderTask.onProgress = (progress: {
+          loaded: number;
+          total: number;
+        }) => {
+          const renderProgress = (progress.loaded / progress.total) * 100;
+          console.log(`Rendering progress: ${renderProgress.toFixed(2)}%`);
+        };
 
-        // Set up text layer if it exists
+        // Wait for rendering to complete with timeout protection
+        const renderTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Page render timeout")), 15000); // 15 second timeout
+        });
+
+        await Promise.race([renderTask.promise, renderTimeoutPromise]);
+
+        console.log("Page render completed successfully");
+
+        // Set up text layer with improved quality
         if (textLayerRef.current) {
           // Clear previous text layer content
-          textLayerRef.current.innerHTML = '';
+          textLayerRef.current.innerHTML = "";
 
           // Set text layer dimensions
           textLayerRef.current.style.width = `${Math.floor(viewport.width)}px`;
-          textLayerRef.current.style.height = `${Math.floor(viewport.height)}px`;
+          textLayerRef.current.style.height = `${Math.floor(
+            viewport.height
+          )}px`;
 
-          // Get text content
-          const textContent = await page.getTextContent();
+          // Get text content with error handling
+          const textContent = await page.getTextContent().catch((err) => {
+            console.error("Error getting text content:", err);
+            return null;
+          });
 
-          // Create text layer using PDF.js text layer builder
-          try {
-            const { renderTextLayer } = await import('pdfjs-dist/web/pdf_viewer');
-            
-            // Render the text layer using the official API
-            renderTextLayer({
-              textContent: textContent,
-              container: textLayerRef.current,
-              viewport: viewport,
-              textDivs: []
-            });
-            
-            textLayerTask = { promise: Promise.resolve() };
-          } catch (err) {
-            console.error('Error creating text layer:', err);
-            textLayerTask = { promise: Promise.resolve() };
+          if (textContent) {
+            // Create text layer using PDF.js text layer builder with improved settings
+            try {
+              const { renderTextLayer } = await import(
+                "pdfjs-dist/web/pdf_viewer"
+              );
+
+              // Render the text layer with enhanced settings
+              renderTextLayer({
+                textContent: textContent,
+                container: textLayerRef.current,
+                viewport: viewport,
+                textDivs: [],
+                // Add text layer optimizations
+                enhanceTextSelection: true,
+                renderInteractiveForms: true,
+                // Add text quality settings
+                textLayerMode: 2, // Use enhanced text layer mode
+                // Add performance settings
+                disableFontFace: false,
+                // Add memory management
+                maxCanvasPixels: 16777216,
+              });
+
+              textLayerTask = { promise: Promise.resolve() };
+            } catch (err) {
+              console.error("Error creating text layer:", err);
+              textLayerTask = { promise: Promise.resolve() };
+            }
           }
         }
 
-        // Set up annotation canvas if it exists
+        // Set up annotation canvas with improved quality
         if (annotationCanvasRef.current) {
           const annotationCanvas = annotationCanvasRef.current;
           annotationCanvas.width = scaledWidth;
           annotationCanvas.height = scaledHeight;
           annotationCanvas.style.width = `${Math.floor(viewport.width)}px`;
           annotationCanvas.style.height = `${Math.floor(viewport.height)}px`;
+          annotationCanvas.style.imageRendering = "high-quality";
+          annotationCanvas.style.imageRendering = "-webkit-optimize-contrast";
+          annotationCanvas.style.imageRendering = "crisp-edges";
         }
 
         console.log(`Page ${pageNumber} rendered successfully`);
@@ -287,7 +377,10 @@ const PDFPage: React.FC<PDFPageProps> = ({
           }
         }
       } catch (err) {
-        console.error('Error rendering page:', err);
+        console.error("Error rendering page:", err);
+        if (isMounted) {
+          setIsRendered(false);
+        }
       }
     };
 
@@ -300,7 +393,7 @@ const PDFPage: React.FC<PDFPageProps> = ({
         try {
           renderTask.cancel();
         } catch (e) {
-          console.error('Error canceling render task:', e);
+          console.error("Error canceling render task:", e);
         }
       }
 
@@ -308,7 +401,7 @@ const PDFPage: React.FC<PDFPageProps> = ({
         try {
           textLayerTask.cancel();
         } catch (e) {
-          console.error('Error canceling text layer task:', e);
+          console.error("Error canceling text layer task:", e);
         }
       }
     };
@@ -316,12 +409,16 @@ const PDFPage: React.FC<PDFPageProps> = ({
 
   return (
     <div
-      className={`pdf-page ${isMobile ? 'pdf-page-mobile-padding' : 'pdf-page-desktop-padding'} hardware-accelerated`}
+      className={`pdf-page ${
+        isMobile ? "pdf-page-mobile-padding" : "pdf-page-desktop-padding"
+      } hardware-accelerated`}
       data-page={pageNumber}
     >
       <div
         ref={containerRef}
-        className={`pdf-container ${isAnimating ? `animating ${direction}` : ''} ${isPanning ? 'panning' : ''}`}
+        className={`pdf-container ${
+          isAnimating ? `animating ${direction}` : ""
+        } ${isPanning ? "panning" : ""}`}
         data-transform="true"
         onMouseDown={handlePanStart}
         onTouchStart={handleTouchPanStart}
@@ -358,8 +455,17 @@ const PDFPage: React.FC<PDFPageProps> = ({
             }}
             aria-label="Reset view"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clipRule="evenodd" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z"
+                clipRule="evenodd"
+              />
             </svg>
           </button>
         )}

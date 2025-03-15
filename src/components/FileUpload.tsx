@@ -1,273 +1,179 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Upload, Loader2 } from 'lucide-react';
-import { PDFDocument } from '@/lib/types';
-import { toast } from "sonner";
-import * as pdfjsLib from 'pdfjs-dist';
-import { pdfSessionStorage } from '@/services/PDFSessionStorage';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-
-// Configure the worker with a more secure approach
-// This avoids using template literals with variables in URLs which can be a security risk
-const pdfjsVersion = pdfjsLib.version;
-const pdfjsWorkerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.min.js`;
-
-// Set worker source only after component mounts to avoid SSR issues
-const initPdfWorker = () => {
-  if (typeof window !== 'undefined') {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc;
-  }
-};
+import React, { useState, useCallback, useEffect } from "react";
+import { Upload, Loader2, AlertTriangle } from "lucide-react";
+import { PDFDocument } from "@/lib/types";
+import toast from "@/utils/toast";
+import { SimplePDFViewer } from "./SimplePDFViewer";
 
 interface FileUploadProps {
   onFileLoaded: (doc: PDFDocument) => void;
-  maxFileSizeMB?: number; // Optional max file size in MB
+  maxFileSizeMB?: number;
+  onTotalPagesChange?: (totalPages: number) => void;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onFileLoaded, maxFileSizeMB = 10 }) => {
-  // Initialize PDF worker after component mounts
-  useEffect(() => {
-    initPdfWorker();
-  }, []);
-  const [dragging, setDragging] = useState(false);
+const FileUpload: React.FC<FileUploadProps> = ({
+  onFileLoaded,
+  maxFileSizeMB = 10,
+  onTotalPagesChange,
+}) => {
   const [loading, setLoading] = useState(false);
-  const loadingTaskRef = useRef<pdfjsLib.PDFDocumentLoadingTask | null>(null);
-  const renderStartTime = useRef<number>(0);
-  const isDesktop = useMediaQuery('(min-width: 769px)');
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(true);
-  }, []);
-  
-  const handleDragLeave = useCallback(() => {
-    setDragging(false);
-  }, []);
-  
-  const processPDF = useCallback(async (file: File) => {
-    // Start loading state and timer
-    setLoading(true);
-    renderStartTime.current = performance.now();
-    toast.info("Processing PDF file...");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-    // Add optimization class to prevent flickering during processing
-    document.body.classList.add('pdf-rendering-optimized');
-
-    // Validate file type with more robust checking
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      toast.error("Please upload a valid PDF file");
-      setLoading(false);
-      document.body.classList.remove('pdf-rendering-optimized');
-      return;
-    }
-    
-    // Validate file size
-    const fileSizeInMB = file.size / (1024 * 1024);
-    if (fileSizeInMB > maxFileSizeMB) {
-      toast.error(`File size exceeds the maximum limit of ${maxFileSizeMB}MB`);
-      setLoading(false);
-      document.body.classList.remove('pdf-rendering-optimized');
-      return;
-    }
-    
-    // Create a safe URL object
-    let fileUrl: string;
-    try {
-      if (typeof URL === 'undefined') {
-        throw new Error('URL API not available');
-      }
-      fileUrl = URL.createObjectURL(file);
-    } catch (error) {
-      console.error("Error creating object URL:", error);
-      toast.error("Failed to process the file");
-      setLoading(false);
-      document.body.classList.remove('pdf-rendering-optimized');
-      return;
-    }
-
-    try {
-      // Cancel any existing loading task
-      if (loadingTaskRef.current) {
-        loadingTaskRef.current.destroy();
-      }
-
-      // Set a timeout to prevent hanging on corrupted PDFs
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('PDF loading timeout')), 15000); // Increased timeout for larger files
-      });
-
-      // Create a new loading task with optimized parameters
-      const loadingTask = pdfjsLib.getDocument({
-        url: fileUrl,
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + pdfjsLib.version + '/cmaps/',
-        cMapPacked: true,
-        rangeChunkSize: 65536, // Optimize chunk size for better streaming
-        disableAutoFetch: false, // Enable auto-fetching for faster rendering
-        disableStream: false, // Enable streaming for progressive loading
-        disableRange: false, // Enable range requests for faster loading
-        withCredentials: false,
-        enableXfa: true, // Enable XFA form support
-        useSystemFonts: true // Use system fonts when available
-      });
-
-      loadingTaskRef.current = loadingTask;
-
-      // Show loading progress
-      loadingTask.onProgress = ({ loaded, total }) => {
-        if (total > 0) {
-          const progress = Math.round((loaded / total) * 100);
-          if (progress % 10 === 0) { // Update more frequently (every 10%)
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`Loading PDF: ${progress}%`);
-            }
-            // Optional: Update UI with progress
-          }
-        }
-      };
-
-      // Get actual page count with timeout protection
-      const pdf = await Promise.race([
-        loadingTask.promise,
-        timeoutPromise
-      ]) as pdfjsLib.PDFDocumentProxy;
-      
-      // Pre-fetch first page for faster initial rendering
-      const firstPagePromise = pdf.getPage(1);
-
-      const pageCount = pdf.numPages;
-
-      // Validate reasonable page count to prevent DoS
-      if (pageCount <= 0 || pageCount > 5000) {
-        throw new Error('Invalid page count');
-      }
-      
-      // Wait for first page to be ready
-      await firstPagePromise;
-
-      const newDocument: PDFDocument = {
-        file,
-        url: fileUrl,
-        name: file.name.replace(/[<>"'&]/g, ''), // Sanitize filename
-        totalPages: pageCount,
-        currentPage: 1
-      };
-      
-      // Add to session storage
-      pdfSessionStorage.addDocument(newDocument);
-
-      // Calculate and log performance metrics
-      const loadTime = Math.round(performance.now() - renderStartTime.current);
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`PDF processed in ${loadTime}ms`);
-      }
-
-      // Notify user and pass document to parent component
-      onFileLoaded(newDocument);
-      toast.success(`PDF loaded successfully (${loadTime}ms)`);
-
-      // Use a slight delay before removing loading state to ensure smooth transition
-      setTimeout(() => {
-        setLoading(false);
-        document.body.classList.remove('pdf-rendering-optimized');
-      }, 300); // Increased delay for smoother transition
-    } catch (error) {
-      // Revoke the URL if there's an error
-      try {
-        if (typeof URL !== 'undefined' && fileUrl) {
-          URL.revokeObjectURL(fileUrl);
-        }
-      } catch (revokeError) {
-        console.error("Error revoking object URL:", revokeError);
-      }
-      
-      console.error("Error loading PDF:", error);
-      if (error instanceof Error && error.message === 'PDF loading timeout') {
-        toast.error("PDF loading timed out. The file might be corrupted or too large.");
-      } else {
-        toast.error("Failed to load PDF. Please ensure it's a valid PDF file.");
-      }
-      setLoading(false);
-      document.body.classList.remove('pdf-rendering-optimized');
-    }
-  }, [onFileLoaded, maxFileSizeMB]);
-  
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    
-    try {
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        // Only process the first file
-        if (e.dataTransfer.files.length > 1) {
-          toast.info("Only the first file will be processed");
-        }
-        const file = e.dataTransfer.files[0];
-        processPDF(file);
-      }
-    } catch (error) {
-      console.error("Error handling file drop:", error);
-      toast.error("Failed to process the dropped file");
-    }
-  }, [processPDF]);
-  
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      if (e.target.files && e.target.files.length > 0) {
-        const file = e.target.files[0];
-        processPDF(file);
-        
-        // Reset the input value to allow uploading the same file again if needed
-        e.target.value = '';
-      }
-    } catch (error) {
-      console.error("Error handling file selection:", error);
-      toast.error("Failed to process the selected file");
-    }
-  }, [processPDF]);
-  
-  // Clean up resources when component unmounts
+  // Clean up URL objects when component unmounts or when URL changes
   useEffect(() => {
     return () => {
-      if (loadingTaskRef.current) {
-        loadingTaskRef.current.destroy();
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
       }
     };
+  }, [previewUrl]);
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // Clean up previous URL if it exists
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
+
+      // Reset states
+      setLoading(true);
+      setError(null);
+
+      // Validate file type
+      if (
+        file.type !== "application/pdf" &&
+        !file.name.toLowerCase().endsWith(".pdf")
+      ) {
+        setError("Please upload a valid PDF file");
+        toast.error("Please upload a valid PDF file");
+        setLoading(false);
+        return;
+      }
+
+      // Validate file size
+      const fileSizeInMB = file.size / (1024 * 1024);
+      if (fileSizeInMB > maxFileSizeMB) {
+        setError(`File size exceeds the maximum limit of ${maxFileSizeMB}MB`);
+        toast.error(
+          `File size exceeds the maximum limit of ${maxFileSizeMB}MB`
+        );
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Create URL for preview
+        const fileUrl = URL.createObjectURL(file);
+        setPreviewUrl(fileUrl);
+
+        // Create PDF document object
+        const doc: PDFDocument = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: fileUrl,
+          lastModified: file.lastModified,
+        };
+
+        // Call the callback with the document
+        onFileLoaded(doc);
+        toast.success(`PDF uploaded: ${file.name}`);
+      } catch (error) {
+        console.error("Error processing PDF:", error);
+        setError("Failed to process the PDF file");
+        toast.error("Failed to process the PDF file");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [maxFileSizeMB, onFileLoaded, previewUrl]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
   }, []);
 
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLLabelElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        // Create a synthetic event to reuse the handleFileChange logic
+        const syntheticEvent = {
+          target: {
+            files: files,
+          },
+        } as React.ChangeEvent<HTMLInputElement>;
+
+        handleFileChange(syntheticEvent);
+      }
+    },
+    [handleFileChange]
+  );
+
   return (
-    <div className="w-full flex flex-col items-center justify-center p-10 animate-fade-in">
-      <div
-        className={`file-drop-area w-full ${isDesktop ? 'max-w-2xl' : 'max-w-lg'} flex flex-col items-center ${dragging ? 'active' : ''} ${isDesktop ? 'p-8' : 'p-4'}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {loading ? (
-          <Loader2 className={`${isDesktop ? 'w-20 h-20' : 'w-16 h-16'} mb-4 text-blue-500 animate-spin`} />
-        ) : (
-          <Upload className={`${isDesktop ? 'w-20 h-20' : 'w-16 h-16'} mb-4 ${dragging ? 'text-blue-500' : 'text-gray-400'} animate-float`} />
-        )}
-        <h3 className={`${isDesktop ? 'text-2xl' : 'text-xl'} font-medium mb-2`}>
-          {loading ? 'Processing PDF...' :
-           dragging ? 'Drop your PDF here' : 'Drag & Drop your PDF here'}
-        </h3>
-        <p className="text-gray-500 mb-6 text-center">
-          {loading ? 'Please wait while we optimize your PDF for viewing' :
-           'or click to browse from your device'}
-        </p>
-        <label
-          htmlFor="file-upload"
-          className={`${isDesktop ? 'px-8 py-4 text-lg' : 'px-6 py-3'} ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 cursor-pointer'} text-white rounded-lg shadow-md transition-colors`}
-        >
-          {loading ? 'Processing...' : 'Browse Files'}
-        </label>
+    <div className="w-full">
+      <div className="relative">
         <input
-          id="file-upload"
           type="file"
-          accept=".pdf"
-          className="hidden"
+          accept=".pdf,application/pdf"
           onChange={handleFileChange}
-          disabled={loading}
+          className="hidden"
+          id="pdf-upload"
         />
+        <label
+          htmlFor="pdf-upload"
+          className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            {error ? (
+              <>
+                <AlertTriangle className="w-10 h-10 mb-2 text-red-500" />
+                <p className="mb-2 text-sm text-red-500">{error}</p>
+                <p className="text-xs text-gray-500">
+                  Try again with a different file
+                </p>
+              </>
+            ) : (
+              <>
+                <Upload className="w-10 h-10 mb-2 text-gray-400" />
+                <p className="mb-2 text-sm text-gray-500">
+                  <span className="font-semibold">Click to upload</span> or drag
+                  and drop
+                </p>
+                <p className="text-xs text-gray-500">
+                  PDF files only (max {maxFileSizeMB}MB)
+                </p>
+              </>
+            )}
+          </div>
+        </label>
       </div>
+
+      {loading && (
+        <div className="flex items-center justify-center mt-4">
+          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          <span className="ml-2 text-gray-600">Processing PDF...</span>
+        </div>
+      )}
+
+      {previewUrl && !loading && (
+        <div className="mt-4">
+          <SimplePDFViewer
+            url={previewUrl}
+            onTotalPagesChange={onTotalPagesChange}
+          />
+        </div>
+      )}
     </div>
   );
 };

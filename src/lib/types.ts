@@ -1,10 +1,9 @@
-
 export interface PDFDocument {
-  file: File;
-  url: string;
   name: string;
-  totalPages: number;
-  currentPage: number;
+  size: number;
+  type: string;
+  url: string;
+  lastModified: number;
 }
 
 export interface PDFTab {

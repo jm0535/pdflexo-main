@@ -1,5 +1,4 @@
-
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -31,7 +30,15 @@ const SearchDialog: React.FC<SearchDialogProps> = ({
   onSearch,
   onJumpToResult
 }) => {
-  const isMobile = useMediaQuery('(max-width: 640px)');
+  // Use state to track mobile view to avoid render-time updates
+  const [isMobile, setIsMobile] = useState(false);
+  const isMobileQuery = useMediaQuery('(max-width: 640px)');
+
+  // Update isMobile state when the query result changes
+  useEffect(() => {
+    setIsMobile(isMobileQuery);
+  }, [isMobileQuery]);
+
   // Automatically focus the search input when the dialog opens
   useEffect(() => {
     if (open) {
@@ -50,14 +57,14 @@ const SearchDialog: React.FC<SearchDialogProps> = ({
 
   const highlightMatch = (text: string, query: string) => {
     if (!query) return text;
-    
+
     const index = text.toLowerCase().indexOf(query.toLowerCase());
     if (index === -1) return text;
-    
+
     const before = text.substring(0, index);
     const match = text.substring(index, index + query.length);
     const after = text.substring(index + query.length);
-    
+
     return (
       <>
         {before}
@@ -77,9 +84,9 @@ const SearchDialog: React.FC<SearchDialogProps> = ({
               <span>Search in PDFs</span>
             </div>
             {isMobile && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => onOpenChange(false)}
                 className="h-8 w-8 rounded-full"
               >
@@ -88,7 +95,7 @@ const SearchDialog: React.FC<SearchDialogProps> = ({
             )}
           </DialogTitle>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className={`flex ${isMobile ? 'flex-col gap-3' : 'gap-2'} my-3`}>
           <Input
             name="search-query"
@@ -98,8 +105,8 @@ const SearchDialog: React.FC<SearchDialogProps> = ({
             className="flex-1"
             autoComplete="off"
           />
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={isSearching || !searchQuery.trim()}
             className={isMobile ? 'h-10 w-full' : ''}
           >
@@ -116,19 +123,19 @@ const SearchDialog: React.FC<SearchDialogProps> = ({
             )}
           </Button>
         </form>
-        
+
         {searchError && (
           <div className="text-red-500 mb-3 text-sm">
             {searchError}
           </div>
         )}
-        
+
         <div className="flex-1 overflow-hidden">
           {searchResults.length > 0 ? (
             <ScrollArea className={`${isMobile ? 'h-[60vh]' : 'h-[50vh]'}`}>
               <div className="space-y-3 p-1">
                 {searchResults.map((result, index) => (
-                  <div 
+                  <div
                     key={`${result.documentId}-${result.pageNumber}-${index}`}
                     className="border border-border rounded-md p-3 hover:bg-secondary/50 transition-colors cursor-pointer active:bg-secondary"
                     onClick={() => onJumpToResult(result)}
@@ -145,9 +152,9 @@ const SearchDialog: React.FC<SearchDialogProps> = ({
                     <div className="text-sm bg-background p-2 rounded border border-border">
                       {highlightMatch(result.text, searchQuery)}
                     </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className={`${isMobile ? 'w-full justify-center mt-2' : 'mt-2 text-blue-500 hover:text-blue-700 px-0'}`}
                       onClick={(e) => {
                         e.stopPropagation();

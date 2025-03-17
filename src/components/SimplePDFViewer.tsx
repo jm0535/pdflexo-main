@@ -83,6 +83,7 @@ export const SimplePDFViewer = ({
   const [renderedPages, setRenderedPages] = useState<number[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchPanel, setShowSearchPanel] = useState<boolean>(false);
+  const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
   const [searchHighlights, setSearchHighlights] = useState<Map<number, any[]>>(
     new Map()
   );
@@ -894,16 +895,16 @@ export const SimplePDFViewer = ({
   }, [bookmarks, url]);
 
   // Recalculate scale on window resize
-  useEffect(() => {
-    const handleResize = useCallback(() => {
-      if (fitToWidth) {
-        const newScale = calculateScale();
-        if (newScale) {
-          setScale(newScale);
-        }
+  const handleResize = useCallback(() => {
+    if (fitToWidth) {
+      const newScale = calculateScale();
+      if (newScale) {
+        setScale(newScale);
       }
-    }, [calculateScale, fitToWidth]);
+    }
+  }, [calculateScale, fitToWidth]);
 
+  useEffect(() => {
     window.addEventListener("resize", handleResize);
     // Initial calculation
     handleResize();
@@ -911,76 +912,76 @@ export const SimplePDFViewer = ({
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [calculateScale, fitToWidth]);
+  }, [handleResize]);
 
   // Handle fullscreen mode
-  useEffect(() => {
-    const handleFullscreenChange = useCallback(() => {
-      setIsFullscreen(!!document.fullscreenElement);
-    }, []);
+  const handleFullscreenChange = useCallback(() => {
+    setIsFullscreen(!!document.fullscreenElement);
+  }, []);
 
+  useEffect(() => {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
-  }, []);
+  }, [handleFullscreenChange]);
 
   // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Prevent handling if inside an input field
+    if (
+      e.target instanceof HTMLInputElement ||
+      e.target instanceof HTMLTextAreaElement
+    ) {
+      return;
+    }
+
+    // Handle Ctrl+F for search
+    if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault(); // Prevent browser's default search
+      setShowSearch(true);
+      return;
+    }
+
+    switch (e.key) {
+      case "ArrowLeft":
+        if (currentPage > 1) setCurrentPage((p) => p - 1);
+        break;
+      case "ArrowRight":
+        if (currentPage < numPages) setCurrentPage((p) => p + 1);
+        break;
+      case "+":
+        handleZoomIn();
+        break;
+      case "-":
+        handleZoomOut();
+        break;
+      case "f":
+        toggleFullscreen();
+        break;
+      case "b":
+        addBookmark();
+        break;
+      case "o":
+        toggleSidebar("outline");
+        break;
+      case "c":
+        toggleViewMode("continuous");
+        break;
+      case "t":
+        toggleViewMode("twoPages");
+        break;
+    }
+  }, [currentPage, numPages, handleZoomIn, handleZoomOut, toggleFullscreen, addBookmark, toggleSidebar, toggleViewMode]);
+
   useEffect(() => {
-    const handleKeyDown = useCallback((e: KeyboardEvent) => {
-      // Prevent handling if inside an input field
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-
-      // Handle Ctrl+F for search
-      if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault(); // Prevent browser's default search
-        setShowSearch(true);
-        return;
-      }
-
-      switch (e.key) {
-        case "ArrowLeft":
-          if (currentPage > 1) setCurrentPage((p) => p - 1);
-          break;
-        case "ArrowRight":
-          if (currentPage < numPages) setCurrentPage((p) => p + 1);
-          break;
-        case "+":
-          handleZoomIn();
-          break;
-        case "-":
-          handleZoomOut();
-          break;
-        case "f":
-          toggleFullscreen();
-          break;
-        case "b":
-          addBookmark();
-          break;
-        case "o":
-          toggleSidebar("outline");
-          break;
-        case "c":
-          toggleViewMode("continuous");
-          break;
-        case "t":
-          toggleViewMode("twoPages");
-          break;
-      }
-    }, [currentPage, numPages]);
-
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [currentPage, numPages]);
+  }, [handleKeyDown]);
 
   // Function to get context around a match
   const getTextContext = useCallback(
@@ -1144,6 +1145,7 @@ export const SimplePDFViewer = ({
       // Show search panel if we have results
       if (results.length > 0) {
         setShowSearchPanel(true);
+        setShowSearchResults(true);
       }
 
       // Navigate to first result if found
@@ -1264,6 +1266,7 @@ export const SimplePDFViewer = ({
   const clearSearch = useCallback(() => {
     setShowSearch(false);
     setShowSearchPanel(false);
+    setShowSearchResults(false);
     setSearchText("");
     setSearchResults([]);
     setDetailedSearchResults([]);
@@ -1401,6 +1404,7 @@ export const SimplePDFViewer = ({
     setSearchHighlights(new Map());
     setCurrentSearchIndex(-1);
     setShowSearchPanel(false);
+    setShowSearchResults(false);
   }, [viewMode]);
 
   // Update search highlights when page or scale changes

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -11,11 +10,11 @@ import DocumentSelector from '@/components/ai-tools/DocumentSelector';
 import { useDocumentSelection } from '@/hooks/useDocumentSelection';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import BuyMeCoffee from '@/components/BuyMeCoffee';
 import { SparklesIcon, Languages } from 'lucide-react';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
+import ComingSoonBadge from '@/components/ai-tools/ComingSoonBadge';
 
 const Translate = () => {
   const [outputLanguage, setOutputLanguage] = useState('Spanish');
@@ -95,8 +94,9 @@ const Translate = () => {
           </Alert>
         )}
         
-        <Card className="border-primary/20 shadow-md mb-8">
-          <CardHeader>
+        <Card className="border-primary/20 shadow-md mb-8 relative">
+          <ComingSoonBadge />
+          <CardHeader className="pb-2 border-b">
             <CardTitle className="flex items-center gap-2">
               <div className="bg-primary/10 p-1.5 rounded-md">
                 <Languages className="h-5 w-5 text-primary" />
@@ -155,8 +155,6 @@ const Translate = () => {
           initialTask={`Translate this text to ${outputLanguage}`}
         />
       </div>
-      
-      <BuyMeCoffee creatorName="PDFlexo" />
     </Layout>
   );
 };

@@ -10,7 +10,7 @@ import DocumentSelector from '@/components/ai-tools/DocumentSelector';
 import { useDocumentSelection } from '@/hooks/useDocumentSelection';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import BuyMeCoffee from '@/components/BuyMeCoffee';
+import ComingSoonBadge from '@/components/ai-tools/ComingSoonBadge';
 
 const ExplainTool = () => {
   const [input, setInput] = useState('');
@@ -102,8 +102,9 @@ const ExplainTool = () => {
             </div>
           )}
           
-          <Card>
-            <CardHeader>
+          <Card className="border-primary/20 shadow-md mb-8 relative">
+            <ComingSoonBadge />
+            <CardHeader className="pb-2 border-b">
               <CardTitle>Explain Complex Text</CardTitle>
             </CardHeader>
             <CardContent>
@@ -197,8 +198,6 @@ const ExplainTool = () => {
         selectedText={documentText || input}
         documentName={selectedDocument?.name || "Explain Tool"}
       />
-      
-      <BuyMeCoffee creatorName="PDFlexo" />
     </Layout>
   );
 };

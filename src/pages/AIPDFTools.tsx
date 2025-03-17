@@ -1,8 +1,8 @@
-
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Sparkles, FileText, BookOpen, Languages, List, Search, FileQuestion } from 'lucide-react';
 import Layout from '@/components/Layout';
 
@@ -66,9 +66,12 @@ const AIPDFTools = () => {
             {aiFeatures.map((feature, index) => (
               <Card 
                 key={index} 
-                className="border border-border hover:border-primary/20 hover:shadow-md transition-all cursor-pointer"
+                className="border border-border hover:border-primary/20 hover:shadow-md transition-all cursor-pointer relative overflow-hidden"
                 onClick={() => navigate(feature.path)}
               >
+                <div className="absolute top-0 right-0 z-10">
+                  <Badge className="rounded-bl-md rounded-tr-md rounded-tl-none rounded-br-none px-3 py-1.5 text-xs font-bold bg-orange-500 text-white border-orange-600 shadow-sm">COMING SOON</Badge>
+                </div>
                 <CardHeader className="flex flex-row items-center gap-4">
                   {feature.icon}
                   <div>
@@ -77,9 +80,7 @@ const AIPDFTools = () => {
                 </CardHeader>
                 <CardContent>
                   <CardDescription className="text-sm">{feature.description}</CardDescription>
-                  <Button className="mt-4 w-full" variant="outline">
-                    Open Tool
-                  </Button>
+                  <Button className="mt-4 w-full" variant="outline">Open Tool</Button>
                 </CardContent>
               </Card>
             ))}

@@ -17,6 +17,7 @@ import {
   useSidebar
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { toggleTheme } from '@/lib/pdfUtils/viewUtils';
 import { toast } from 'sonner';
 
@@ -141,10 +142,15 @@ const PDFSidebar: React.FC = () => {
                       <SidebarMenuButton asChild>
                         <Link
                           to={item.path}
-                          className={location.pathname === item.path ? 'bg-accent text-accent-foreground' : ''}
+                          className={`${location.pathname === item.path ? 'bg-accent text-accent-foreground' : ''} relative`}
                         >
                           <item.icon className={`${expanded || isMobileView ? 'w-5 h-5' : 'w-5 h-5'} text-[${item.color}]`} />
-                          {(expanded || isMobileView) && <span>{item.title}</span>}
+                          {(expanded || isMobileView) && (
+                            <div className="flex items-center">
+                              <span>{item.title}</span>
+                              <Badge className="ml-2 text-[0.6rem] px-1 py-0 h-4 bg-orange-500 text-white border-orange-600">SOON</Badge>
+                            </div>
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -158,9 +164,7 @@ const PDFSidebar: React.FC = () => {
         <SidebarFooter className="flex items-center justify-center">
           {(expanded || isMobileView) ? (
             <div className="w-full flex items-center justify-between">
-              <div className="text-xs text-muted-foreground">
-                PDFlexo v1.0.0
-              </div>
+              <div className="text-xs text-muted-foreground">PDFlexo v1.0.0</div>
               <Button
                 variant="ghost"
                 size="icon"

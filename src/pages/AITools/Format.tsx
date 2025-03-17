@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -12,7 +11,7 @@ import DocumentSelector from '@/components/ai-tools/DocumentSelector';
 import { useDocumentSelection } from '@/hooks/useDocumentSelection';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import BuyMeCoffee from '@/components/BuyMeCoffee';
+import ComingSoonBadge from '@/components/ai-tools/ComingSoonBadge';
 
 const FormatTool = () => {
   const [input, setInput] = useState('');
@@ -138,8 +137,9 @@ Conclusions and additional insights.`;
             </div>
           )}
           
-          <Card>
-            <CardHeader>
+          <Card className="border-primary/20 shadow-md mb-8 relative">
+            <ComingSoonBadge />
+            <CardHeader className="pb-2 border-b">
               <CardTitle>Format Text</CardTitle>
             </CardHeader>
             <CardContent>
@@ -252,8 +252,6 @@ Conclusions and additional insights.`;
         selectedText={documentText || input}
         documentName={selectedDocument?.name || "Format Tool"}
       />
-      
-      <BuyMeCoffee creatorName="PDFlexo" />
     </Layout>
   );
 };

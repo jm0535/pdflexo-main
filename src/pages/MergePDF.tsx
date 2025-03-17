@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from "sonner";
 import { Layers } from 'lucide-react';
@@ -6,7 +5,6 @@ import FileDropZone from '@/components/pdf-merge/FileDropZone';
 import PDFItemList from '@/components/pdf-merge/PDFItemList';
 import { PDFItem } from '@/components/pdf-merge/types';
 import Layout from '@/components/Layout';
-import BuyMeCoffee from '@/components/BuyMeCoffee';
 
 const MergePDF = () => {
   const [pdfs, setPdfs] = useState<PDFItem[]>([]);
@@ -86,8 +84,6 @@ const MergePDF = () => {
           </div>
         </div>
       </main>
-      
-      <BuyMeCoffee creatorName="PDFlexo" />
     </Layout>
   );
 };

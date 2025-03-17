@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,7 +13,7 @@ import Layout from '@/components/Layout';
 import DocumentSelector from '@/components/ai-tools/DocumentSelector';
 import { useDocumentSelection } from '@/hooks/useDocumentSelection';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import BuyMeCoffee from '@/components/BuyMeCoffee';
+import ComingSoonBadge from '@/components/ai-tools/ComingSoonBadge';
 
 const ExtractTool = () => {
   const navigate = useNavigate();
@@ -113,7 +112,8 @@ const ExtractTool = () => {
           </Alert>
         )}
           
-        <Card className="border-primary/20 shadow-md">
+        <Card className="border-primary/20 shadow-md mb-8 relative">
+          <ComingSoonBadge />
           <CardHeader className="pb-2 border-b">
             <div className="flex items-center gap-2">
               <div className="bg-primary/10 p-1.5 rounded-md">
@@ -224,7 +224,6 @@ const ExtractTool = () => {
         documentName={selectedDocument?.name || "Extract Tool"}
       />
 
-      <BuyMeCoffee creatorName="PDFlexo" />
     </Layout>
   );
 };

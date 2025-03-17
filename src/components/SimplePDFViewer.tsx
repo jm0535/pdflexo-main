@@ -7,20 +7,27 @@ import {
 } from "@/lib/pdfjs-setup";
 import "./SimplePDFViewer.css";
 import {
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  Maximize,
-  List,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  Book,
   Bookmark,
-  Search,
   ChevronLeft,
   ChevronRight,
+  Download,
   Grid2X2,
+  List,
+  Maximize,
+  Printer,
+  RotateCw,
+  Search,
   SplitSquareVertical,
-  ArrowUp,
-  ArrowDown,
   X,
+  ZoomIn,
+  ZoomOut,
+  AlertCircle,
+  AlignJustify
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -1473,7 +1480,7 @@ export const SimplePDFViewer = ({
             title="Outline"
           >
             <List className="h-4 w-4 mr-1" />
-            <span>Outline</span>
+            <span className="hidden sm:inline">Outline</span>
           </Button>
 
           <Button
@@ -1488,7 +1495,7 @@ export const SimplePDFViewer = ({
             title="Bookmarks"
           >
             <Bookmark className="h-4 w-4 mr-1" />
-            <span>Bookmarks</span>
+            <span className="hidden sm:inline">Bookmarks</span>
           </Button>
 
           <Button
@@ -1503,7 +1510,7 @@ export const SimplePDFViewer = ({
             title="Thumbnails"
           >
             <Grid2X2 className="h-4 w-4 mr-1" />
-            <span>Thumbnails</span>
+            <span className="hidden sm:inline">Thumbnails</span>
           </Button>
         </div>
 
@@ -1516,7 +1523,7 @@ export const SimplePDFViewer = ({
             className="font-medium"
           >
             <ZoomOut className="h-4 w-4 mr-1" />
-            <span>-</span>
+            <span className="hidden sm:inline">-</span>
           </Button>
 
           <Button
@@ -1528,6 +1535,7 @@ export const SimplePDFViewer = ({
             }`}
             title={fitToWidth ? "Fit to Width (Active)" : "Fit to Width"}
           >
+            <Maximize className="h-4 w-4 mr-1 hidden sm:block" />
             <span>Fit</span>
           </Button>
 
@@ -1539,7 +1547,7 @@ export const SimplePDFViewer = ({
             className="font-medium"
           >
             <ZoomIn className="h-4 w-4 mr-1" />
-            <span>+</span>
+            <span className="hidden sm:inline">+</span>
           </Button>
 
           <Button
@@ -1550,7 +1558,7 @@ export const SimplePDFViewer = ({
             className="font-medium"
           >
             <RotateCw className="h-4 w-4 mr-1" />
-            <span>Rotate</span>
+            <span className="hidden sm:inline">Rotate</span>
           </Button>
         </div>
 
@@ -1564,6 +1572,7 @@ export const SimplePDFViewer = ({
             }`}
             title="Continuous View"
           >
+            <AlignJustify className="h-4 w-4 mr-1 hidden sm:block" />
             <span>Continuous</span>
           </Button>
 
@@ -1577,7 +1586,7 @@ export const SimplePDFViewer = ({
             title="Two Pages View"
           >
             <SplitSquareVertical className="h-4 w-4 mr-1" />
-            <span>Two Pages</span>
+            <span className="hidden sm:inline">Two Pages</span>
           </Button>
 
           <Button
@@ -1588,7 +1597,7 @@ export const SimplePDFViewer = ({
             className="font-medium"
           >
             <Maximize className="h-4 w-4 mr-1" />
-            <span>Fullscreen</span>
+            <span className="hidden sm:inline">Fullscreen</span>
           </Button>
         </div>
 
@@ -1603,7 +1612,29 @@ export const SimplePDFViewer = ({
             title="Search"
           >
             <Search className="h-4 w-4 mr-1" />
-            <span>Search</span>
+            <span className="hidden sm:inline">Search</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrint}
+            title="Print"
+            className="font-medium"
+          >
+            <Printer className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Print</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownload}
+            title="Download"
+            className="font-medium"
+          >
+            <Download className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Download</span>
           </Button>
         </div>
       </div>
@@ -1643,74 +1674,49 @@ export const SimplePDFViewer = ({
                   setShowSearchPanel(false);
                 }
               }}
-              className="w-full bg-slate-700 text-white placeholder-slate-300 border-slate-600 text-base"
-              disabled={isSearching}
-              autoFocus
+              className="w-full"
             />
           </div>
           <div className="pdf-search-controls">
             <Button
               variant="outline"
               size="sm"
-              onClick={handleSearch}
-              className="font-medium bg-blue-600 hover:bg-blue-700 text-white border-blue-700"
-              disabled={isSearching || !searchText.trim()}
+              onClick={goToPreviousSearchResult}
+              disabled={!searchResults.length || currentSearchIndex <= 0}
+              title="Previous Result"
+              className="font-medium"
             >
-              {isSearching ? (
-                <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />
-              ) : (
-                <span>Find</span>
-              )}
+              <ArrowUp className="h-4 w-4" />
             </Button>
-            {searchResults.length > 0 && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={navigateToPrevSearchResult}
-                  className="font-medium bg-slate-700 text-white border-slate-600"
-                  disabled={isSearching}
-                  title="Previous Result (Shift+Enter)"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={navigateToNextSearchResult}
-                  className="font-medium bg-slate-700 text-white border-slate-600"
-                  disabled={isSearching}
-                  title="Next Result (Enter)"
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowSearchPanel(!showSearchPanel)}
-                  className={`font-medium ${
-                    showSearchPanel ? "bg-primary" : "bg-slate-700"
-                  } text-white border-slate-600`}
-                  disabled={isSearching}
-                  title="Toggle Search Panel"
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </>
-            )}
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={() => {
-                setShowSearch(false);
-                setShowSearchPanel(false);
-                setSearchText("");
-                setSearchResults([]);
-                setDetailedSearchResults([]);
-                setSearchHighlights(new Map());
-              }}
-              className="text-white hover:bg-slate-700"
-              disabled={isSearching}
+              onClick={goToNextSearchResult}
+              disabled={
+                !searchResults.length ||
+                currentSearchIndex >= searchResults.length - 1
+              }
+              title="Next Result"
+              className="font-medium"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSearch}
+              title="Search"
+              className="font-medium"
+            >
+              <Search className="h-4 w-4 mr-1" />
+              <span>Search</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearSearch}
+              title="Clear Search"
+              className="font-medium"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -1718,30 +1724,205 @@ export const SimplePDFViewer = ({
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="pdf-content-container" ref={containerRef}>
+      {/* Content Container */}
+      <div className="pdf-content-container">
         {/* Sidebar */}
         {showSidebar && (
-          <div className="pdf-sidebar">{renderSidebarContent()}</div>
+          <div className={`pdf-sidebar ${showSidebar ? "open" : ""}`}>
+            <div className="pdf-sidebar-content">
+              {sidebarTab === "outline" && (
+                <>
+                  <h3>Document Outline</h3>
+                  {outline.length > 0 ? (
+                    <ul className="pdf-outline-list">
+                      {outline.map((item, index) => (
+                        <li key={index} className="pdf-outline-item">
+                          <button
+                            onClick={() => handleOutlineItemClick(item)}
+                            style={{
+                              paddingLeft: `${item.level * 12}px`,
+                            }}
+                          >
+                            {item.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-400 text-sm">
+                      No outline available for this document.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {sidebarTab === "bookmarks" && (
+                <>
+                  <h3>Bookmarks</h3>
+                  {bookmarks.length > 0 ? (
+                    <ul className="pdf-bookmarks-list">
+                      {bookmarks.map((bookmark, index) => (
+                        <li key={index} className="pdf-bookmark-item">
+                          <button
+                            onClick={() => handleBookmarkClick(bookmark)}
+                          >
+                            {bookmark.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div>
+                      <p className="text-gray-400 text-sm mb-4">
+                        No bookmarks yet. Add bookmarks to pages for quick
+                        access.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          addBookmark({
+                            page: currentPage,
+                            title: `Page ${currentPage}`,
+                          })
+                        }
+                        className="w-full"
+                      >
+                        <Bookmark className="h-4 w-4 mr-2" />
+                        Bookmark Current Page
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {sidebarTab === "thumbnails" && (
+                <>
+                  <h3>Page Thumbnails</h3>
+                  <div className="pdf-thumbnail-grid">
+                    {Array.from({ length: numPages }, (_, i) => i + 1).map(
+                      (pageNum) => (
+                        <div
+                          key={`thumb-${pageNum}`}
+                          className={`pdf-thumbnail-item ${
+                            pageNum === currentPage ? "current" : ""
+                          }`}
+                          onClick={() => setCurrentPage(pageNum)}
+                        >
+                          <div
+                            className="pdf-thumbnail"
+                            ref={(el) => {
+                              if (el && !thumbnailsRendered.includes(pageNum)) {
+                                renderThumbnail(pageNum, el);
+                              }
+                            }}
+                          ></div>
+                          <div className="text-center">Page {pageNum}</div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         {/* PDF Viewer */}
-        <div className={`pdf-canvas-container ${viewMode}`}>
-          {renderPDFViewer()}
-          {searchHighlights.size > 0 && renderSearchHighlights()}
-          {showSearchPanel && (
-            <ImprovedSearchPanel
-              showPanel={showSearchPanel}
-              searchResults={searchResults}
-              detailedResults={detailedSearchResults}
-              currentSearchIndex={currentSearchIndex}
-              onClose={() => setShowSearchPanel(false)}
-              onClear={clearSearch}
-              onResultClick={handleSearchResultClick}
-            />
+        <div
+          className={`pdf-canvas-container ${viewMode}`}
+          ref={containerRef}
+          onScroll={handleScroll}
+        >
+          {loading ? (
+            <div className="loading-container">
+              <div className="loading-spinner"></div>
+              <p className="mt-4 text-white">Loading PDF...</p>
+            </div>
+          ) : error ? (
+            <div className="error-container">
+              <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+              <h3 className="text-xl font-bold text-white mb-2">
+                Error Loading PDF
+              </h3>
+              <p className="text-gray-300 mb-4">{error}</p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={handleRetry}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Retry
+                </button>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800"
+                >
+                  Reload Viewer
+                </button>
+              </div>
+            </div>
+          ) : (
+            renderPDFViewer()
+          )}
+
+          {/* Search highlights container */}
+          <div className="search-highlights-container" ref={highlightsRef}></div>
+
+          {/* Floating page number indicator */}
+          {numPages > 0 && !loading && !error && (
+            <div className="page-number-indicator">
+              Page {currentPage} of {numPages}
+            </div>
           )}
         </div>
       </div>
+
+      {/* Search Results Panel */}
+      {showSearchResults && searchResults.length > 0 && (
+        <div className="search-panel">
+          <div className="search-panel-header">
+            <h3>Search Results ({searchResults.length})</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSearchResults(false)}
+              className="h-8 w-8 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="search-panel-content">
+            {searchResults.map((result, index) => (
+              <div
+                key={index}
+                className={`search-result-item ${
+                  index === currentSearchIndex ? "active" : ""
+                }`}
+                onClick={() => handleSearchResultClick(index, result.page)}
+              >
+                <div className="search-result-page">
+                  <span>Page {result.page}</span>
+                  <span>{result.matches} matches</span>
+                </div>
+                <p className="search-result-text">
+                  {result.text.substring(0, 100)}...
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="search-panel-footer">
+            <span>Total: {searchResults.length} matches</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearSearch}
+              className="h-6 px-2 text-xs"
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

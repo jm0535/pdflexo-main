@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -13,8 +12,8 @@ import { useDocumentSelection } from '@/hooks/useDocumentSelection';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, SparklesIcon, AlertCircle } from 'lucide-react';
-import BuyMeCoffee from '@/components/BuyMeCoffee';
 import { Skeleton } from "@/components/ui/skeleton";
+import ComingSoonBadge from '@/components/ai-tools/ComingSoonBadge';
 
 const Summarize = () => {
   const [inputText, setInputText] = useState('');
@@ -95,7 +94,8 @@ const Summarize = () => {
           </Alert>
         )}
         
-        <Card className="border-primary/20 shadow-md mb-8">
+        <Card className="border-primary/20 shadow-md mb-8 relative">
+          <ComingSoonBadge />
           <CardHeader className="pb-2 border-b">
             <div className="flex items-center gap-2">
               <div className="bg-primary/10 p-1.5 rounded-md">
@@ -158,8 +158,6 @@ const Summarize = () => {
           initialTask="Summarize this text"
         />
       </div>
-      
-      <BuyMeCoffee creatorName="PDFlexo" />
     </Layout>
   );
 };

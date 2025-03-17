@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -11,10 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import AnswerHeader from '@/components/ai-tools/answer/AnswerHeader';
 import AnswerForm from '@/components/ai-tools/answer/AnswerForm';
 import AnswerResult from '@/components/ai-tools/answer/AnswerResult';
-import BuyMeCoffee from '@/components/BuyMeCoffee';
 import { FileQuestion, SparklesIcon, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import ComingSoonBadge from '@/components/ai-tools/ComingSoonBadge';
 
 const AnswerTool = () => {
   const [documentContext, setDocumentContext] = useState('');
@@ -111,7 +110,8 @@ const AnswerTool = () => {
           </Alert>
         )}
         
-        <Card className="border-primary/20 shadow-md mb-8">
+        <Card className="border-primary/20 shadow-md mb-8 relative">
+          <ComingSoonBadge />
           <CardHeader className="pb-2 border-b">
             <div className="flex items-center gap-2">
               <div className="bg-primary/10 p-1.5 rounded-md">
@@ -183,8 +183,6 @@ const AnswerTool = () => {
           documentName={selectedDocument?.name || "Q&A Tool"}
         />
       </div>
-      
-      <BuyMeCoffee creatorName="PDFlexo" />
     </Layout>
   );
 };

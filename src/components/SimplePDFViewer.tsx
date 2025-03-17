@@ -81,6 +81,7 @@ export const SimplePDFViewer = ({
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [renderedPages, setRenderedPages] = useState<number[]>([]);
+  const [thumbnailsRendered, setThumbnailsRendered] = useState<number[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchPanel, setShowSearchPanel] = useState<boolean>(false);
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
@@ -894,6 +895,50 @@ export const SimplePDFViewer = ({
     }
   }, [bookmarks, url]);
 
+  // Function to render thumbnails
+  const renderThumbnail = useCallback(async (pageNum: number, container: HTMLElement) => {
+    if (!pdfDocRef.current) return;
+    
+    try {
+      // Get the page
+      const page = await pdfDocRef.current.getPage(pageNum);
+      
+      // Create a small viewport for the thumbnail
+      const viewport = page.getViewport({ scale: 0.2, rotation: 0 });
+      
+      // Create a canvas for this thumbnail
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      
+      if (!context) {
+        console.error('Failed to get canvas context for thumbnail');
+        return;
+      }
+      
+      // Set canvas dimensions
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      
+      // Render page to canvas
+      await page.render({
+        canvasContext: context,
+        viewport: viewport,
+      }).promise;
+      
+      // Clear the container and append the canvas
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+      container.appendChild(canvas);
+      
+      // Mark this thumbnail as rendered
+      setThumbnailsRendered(prev => [...prev, pageNum]);
+      
+    } catch (err) {
+      console.error(`Error rendering thumbnail for page ${pageNum}:`, err);
+    }
+  }, [pdfDocRef]);
+
   // Recalculate scale on window resize
   const handleResize = useCallback(() => {
     if (fitToWidth) {
@@ -1322,6 +1367,15 @@ export const SimplePDFViewer = ({
     },
     [searchResults]
   );
+
+  // Aliases for search navigation functions for better naming consistency in UI
+  const goToPreviousSearchResult = useCallback(() => {
+    navigateToPrevSearchResult();
+  }, [navigateToPrevSearchResult]);
+
+  const goToNextSearchResult = useCallback(() => {
+    navigateToNextSearchResult();
+  }, [navigateToNextSearchResult]);
 
   // Function to render search highlights
   const renderSearchHighlights = useCallback(() => {

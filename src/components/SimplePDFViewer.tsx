@@ -105,6 +105,127 @@ export const SimplePDFViewer = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  const highlightsRef = useRef<HTMLDivElement>(null);
+
+  // Handle print function
+  const handlePrint = useCallback(() => {
+    if (!url) return;
+    
+    // Create an iframe to print the PDF
+    const printIframe = document.createElement('iframe');
+    printIframe.style.display = 'none';
+    printIframe.src = url;
+    
+    printIframe.onload = () => {
+      try {
+        printIframe.contentWindow?.print();
+      } catch (error) {
+        console.error('Error printing document:', error);
+      }
+      
+      // Remove the iframe after printing
+      setTimeout(() => {
+        document.body.removeChild(printIframe);
+      }, 1000);
+    };
+    
+    document.body.appendChild(printIframe);
+  }, [url]);
+
+  // Handle download function
+  const handleDownload = useCallback(() => {
+    if (!url) return;
+    
+    // Create a temporary anchor element
+    const downloadLink = document.createElement('a');
+    downloadLink.href = url;
+    
+    // Extract filename from URL or use a default name
+    const filename = url.split('/').pop() || 'document.pdf';
+    downloadLink.download = filename;
+    
+    // Append to the document, click it, and remove it
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+  }, [url]);
+
+  // Handle bookmark click
+  const handleBookmarkClick = useCallback((bookmark: BookmarkItem) => {
+    if (bookmark && bookmark.page) {
+      setCurrentPage(bookmark.page);
+    }
+  }, []);
+
+  // Handle retry loading PDF
+  const handleRetry = useCallback(() => {
+    setError(null);
+    setLoading(true);
+    
+    // Re-initialize the PDF loading process
+    if (url) {
+      initPdfWorker();
+      loadPdfDocument(url)
+        .then((pdfDoc) => {
+          pdfDocRef.current = pdfDoc;
+          setNumPages(pdfDoc.numPages);
+          if (onTotalPagesChange) {
+            onTotalPagesChange(pdfDoc.numPages);
+          }
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error("Error loading PDF:", err);
+          setError("Failed to load PDF. Please try again.");
+          setLoading(false);
+        });
+    }
+  }, [url, onTotalPagesChange]);
+
+  // Handle scroll event in the PDF viewer
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!viewerRef.current || !pdfDocRef.current || viewMode !== "continuous") return;
+    
+    const container = e.currentTarget;
+    const scrollTop = container.scrollTop;
+    const clientHeight = container.clientHeight;
+    const scrollHeight = container.scrollHeight;
+    
+    // Determine which page is most visible in the viewport
+    const pageElements = container.querySelectorAll('.pdf-page');
+    if (pageElements.length === 0) return;
+    
+    let mostVisiblePage = 1;
+    let maxVisibility = 0;
+    
+    pageElements.forEach((pageEl) => {
+      const rect = pageEl.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      
+      // Calculate how much of the page is visible
+      const visibleTop = Math.max(rect.top, containerRect.top);
+      const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      
+      // Get page number from data attribute
+      const pageNumber = parseInt(pageEl.getAttribute('data-page-number') || '1', 10);
+      
+      if (visibleHeight > maxVisibility) {
+        maxVisibility = visibleHeight;
+        mostVisiblePage = pageNumber;
+      }
+    });
+    
+    // Update current page if it changed
+    if (mostVisiblePage !== currentPage) {
+      setCurrentPage(mostVisiblePage);
+    }
+    
+    // Load more pages when scrolling near the bottom
+    if (scrollTop + clientHeight > scrollHeight - 500) {
+      // Logic to load more pages if implementing lazy loading
+    }
+  }, [viewMode, currentPage]);
 
   // Clean up function to prevent memory leaks
   const cleanupPdf = useCallback(() => {
@@ -419,7 +540,7 @@ export const SimplePDFViewer = ({
   ]);
 
   // Navigation functions for different view modes
-  const goToPreviousPage = () => {
+  const goToPreviousPage = useCallback(() => {
     if (currentPage <= 1) return;
 
     if (viewMode === "twoPages") {
@@ -428,9 +549,9 @@ export const SimplePDFViewer = ({
     } else {
       setCurrentPage(currentPage - 1);
     }
-  };
+  }, [currentPage, viewMode]);
 
-  const goToNextPage = () => {
+  const goToNextPage = useCallback(() => {
     if (currentPage >= numPages) return;
 
     if (viewMode === "twoPages") {
@@ -439,10 +560,10 @@ export const SimplePDFViewer = ({
     } else {
       setCurrentPage(currentPage + 1);
     }
-  };
+  }, [currentPage, numPages, viewMode]);
 
   // View mode functions - simplified
-  const toggleViewMode = (mode: ViewMode) => {
+  const toggleViewMode = useCallback((mode: ViewMode) => {
     // If we're already in this mode, do nothing
     if (viewMode === mode) return;
 
@@ -475,34 +596,34 @@ export const SimplePDFViewer = ({
         setLoading(false);
       }, 500);
     }, 100);
-  };
+  }, [viewMode, currentPage]);
 
   // Sidebar functions
-  const toggleSidebar = (tab: SidebarTab) => {
+  const toggleSidebar = useCallback((tab: SidebarTab) => {
     if (showSidebar && sidebarTab === tab) {
       setShowSidebar(false);
     } else {
       setShowSidebar(true);
       setSidebarTab(tab);
     }
-  };
+  }, [showSidebar, sidebarTab]);
 
   // Zoom functions
-  const handleZoomIn = () => {
+  const handleZoomIn = useCallback(() => {
     setFitToWidth(false);
     setScale((prevScale) => Math.min(prevScale + 0.2, 3.0));
-  };
+  }, []);
 
-  const handleZoomOut = () => {
+  const handleZoomOut = useCallback(() => {
     setFitToWidth(false);
     setScale((prevScale) => Math.max(prevScale - 0.2, 0.5));
-  };
+  }, []);
 
-  const handleRotate = () => {
+  const handleRotate = useCallback(() => {
     setRotation((prevRotation) => (prevRotation + 90) % 360);
-  };
+  }, []);
 
-  const toggleFitToWidth = () => {
+  const toggleFitToWidth = useCallback(() => {
     setFitToWidth((prev) => !prev);
     if (!fitToWidth) {
       const newScale = calculateScale();
@@ -510,9 +631,9 @@ export const SimplePDFViewer = ({
         setScale(newScale);
       }
     }
-  };
+  }, [fitToWidth, calculateScale]);
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (!viewerRef.current) return;
 
     if (!document.fullscreenElement) {
@@ -522,7 +643,7 @@ export const SimplePDFViewer = ({
     } else {
       document.exitFullscreen();
     }
-  };
+  }, []);
 
   // Add intersection observer for continuous mode
   useEffect(() => {
@@ -587,127 +708,108 @@ export const SimplePDFViewer = ({
   }, [currentPage, viewMode]);
 
   // Render sidebar content
-  const renderSidebarContent = () => {
-    switch (sidebarTab) {
-      case "outline":
-        return (
-          <div className="pdf-sidebar-content">
-            <h3 className="text-lg font-medium mb-2">Document Outline</h3>
-            {outline && outline.length > 0 ? (
-              <ul className="pdf-outline-list">
-                {outline.map((item: any, index) => (
-                  <li key={`outline-${index}`} className="pdf-outline-item">
-                    <button
-                      onClick={() => handleOutlineItemClick(item)}
-                      className="text-left hover:text-primary"
-                    >
-                      {item.title || "Untitled Section"}
-                    </button>
-                    {item.items && item.items.length > 0 && (
-                      <ul className="pl-4">
-                        {item.items.map((subItem: any, subIndex: number) => (
-                          <li
-                            key={`outline-${index}-${subIndex}`}
-                            className="pdf-outline-item"
-                          >
-                            <button
-                              onClick={() => handleOutlineItemClick(subItem)}
-                              className="text-left hover:text-primary"
-                            >
-                              {subItem.title || "Untitled Item"}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-gray-500">No outline available</p>
-            )}
-          </div>
-        );
-
-      case "bookmarks":
-        return (
-          <div className="pdf-sidebar-content">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium">Bookmarks</h3>
+  const renderSidebarContent = useCallback(() => {
+    if (sidebarTab === "outline") {
+      return (
+        <>
+          <h3>Document Outline</h3>
+          {outline.length > 0 ? (
+            <ul className="pdf-outline-list">
+              {outline.map((item, index) => (
+                <li key={index} className="pdf-outline-item">
+                  <button
+                    onClick={() => handleOutlineItemClick(item)}
+                    style={{
+                      paddingLeft: `${item.level * 12}px`,
+                    }}
+                  >
+                    {item.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-400 text-sm">
+              No outline available for this document.
+            </p>
+          )}
+        </>
+      );
+    } else if (sidebarTab === "bookmarks") {
+      return (
+        <>
+          <h3>Bookmarks</h3>
+          {bookmarks.length > 0 ? (
+            <ul className="pdf-bookmarks-list">
+              {bookmarks.map((bookmark, index) => (
+                <li key={index} className="pdf-bookmark-item">
+                  <button
+                    onClick={() => handleBookmarkClick(bookmark)}
+                  >
+                    {bookmark.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div>
+              <p className="text-gray-400 text-sm mb-4">
+                No bookmarks yet. Add bookmarks to pages for quick
+                access.
+              </p>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={addBookmark}
-                title="Add Bookmark"
+                onClick={() =>
+                  addBookmark({
+                    page: currentPage,
+                    title: `Page ${currentPage}`,
+                  })
+                }
+                className="w-full"
               >
-                Add
+                <Bookmark className="h-4 w-4 mr-2" />
+                Bookmark Current Page
               </Button>
             </div>
-            {bookmarks.length > 0 ? (
-              <ul className="pdf-bookmarks-list">
-                {bookmarks.map((bookmark) => (
-                  <li
-                    key={bookmark.id}
-                    className="pdf-bookmark-item flex justify-between items-center py-2"
-                  >
-                    <button
-                      onClick={() => setCurrentPage(bookmark.page)}
-                      className="text-left hover:text-primary flex-1"
-                    >
-                      {bookmark.title}
-                    </button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeBookmark(bookmark.id)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      ×
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-gray-500">No bookmarks added</p>
+          )}
+        </>
+      );
+    } else if (sidebarTab === "thumbnails") {
+      return (
+        <>
+          <h3>Page Thumbnails</h3>
+          <div className="pdf-thumbnail-grid">
+            {Array.from({ length: numPages }, (_, i) => i + 1).map(
+              (pageNum) => (
+                <div
+                  key={`thumb-${pageNum}`}
+                  className={`pdf-thumbnail-item ${
+                    pageNum === currentPage ? "current" : ""
+                  }`}
+                  onClick={() => setCurrentPage(pageNum)}
+                >
+                  <div
+                    className="pdf-thumbnail"
+                    ref={(el) => {
+                      if (el && !thumbnailsRendered.includes(pageNum)) {
+                        renderThumbnail(pageNum, el);
+                      }
+                    }}
+                  ></div>
+                  <div className="text-center">Page {pageNum}</div>
+                </div>
+              )
             )}
           </div>
-        );
-
-      case "thumbnails":
-        return (
-          <div className="pdf-sidebar-content">
-            <h3 className="text-lg font-medium mb-2">Page Thumbnails</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {thumbnails.map((thumb, index) => (
-                <div
-                  key={`thumb-${index}`}
-                  className={`pdf-thumbnail-item cursor-pointer border-2 ${
-                    currentPage === index + 1
-                      ? "border-primary"
-                      : "border-transparent"
-                  }`}
-                  onClick={() => setCurrentPage(index + 1)}
-                >
-                  <img
-                    src={thumb}
-                    alt={`Page ${index + 1}`}
-                    className="w-full"
-                  />
-                  <div className="text-center text-xs mt-1">
-                    Page {index + 1}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
+        </>
+      );
     }
-  };
 
-  const handleOutlineItemClick = async (item: any) => {
+    return null;
+  }, [sidebarTab, outline, bookmarks, thumbnails, currentPage]);
+
+  const handleOutlineItemClick = useCallback(async (item: any) => {
     if (!pdfDocRef.current) return;
 
     try {
@@ -751,14 +853,14 @@ export const SimplePDFViewer = ({
     } catch (err) {
       console.error("Error navigating to outline item:", err);
     }
-  };
+  }, [pdfDocRef, numPages]);
 
   // Bookmark functions
-  const addBookmark = () => {
+  const addBookmark = useCallback((customBookmark?: { page: number; title: string }) => {
     const newBookmark: BookmarkItem = {
       id: `bookmark-${Date.now()}`,
-      page: currentPage,
-      title: `Page ${currentPage}`,
+      page: customBookmark?.page || currentPage,
+      title: customBookmark?.title || `Page ${currentPage}`,
       timestamp: Date.now(),
     };
 
@@ -774,9 +876,9 @@ export const SimplePDFViewer = ({
     } catch (err) {
       console.error("Error saving bookmark:", err);
     }
-  };
+  }, [bookmarks, currentPage, url]);
 
-  const removeBookmark = (id: string) => {
+  const removeBookmark = useCallback((id: string) => {
     const updatedBookmarks = bookmarks.filter((b) => b.id !== id);
     setBookmarks(updatedBookmarks);
 
@@ -789,18 +891,18 @@ export const SimplePDFViewer = ({
     } catch (err) {
       console.error("Error removing bookmark:", err);
     }
-  };
+  }, [bookmarks, url]);
 
   // Recalculate scale on window resize
   useEffect(() => {
-    const handleResize = () => {
+    const handleResize = useCallback(() => {
       if (fitToWidth) {
         const newScale = calculateScale();
         if (newScale) {
           setScale(newScale);
         }
       }
-    };
+    }, [calculateScale, fitToWidth]);
 
     window.addEventListener("resize", handleResize);
     // Initial calculation
@@ -813,9 +915,9 @@ export const SimplePDFViewer = ({
 
   // Handle fullscreen mode
   useEffect(() => {
-    const handleFullscreenChange = () => {
+    const handleFullscreenChange = useCallback(() => {
       setIsFullscreen(!!document.fullscreenElement);
-    };
+    }, []);
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
@@ -826,7 +928,7 @@ export const SimplePDFViewer = ({
 
   // Handle keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = useCallback((e: KeyboardEvent) => {
       // Prevent handling if inside an input field
       if (
         e.target instanceof HTMLInputElement ||
@@ -871,7 +973,7 @@ export const SimplePDFViewer = ({
           toggleViewMode("twoPages");
           break;
       }
-    };
+    }, [currentPage, numPages]);
 
     window.addEventListener("keydown", handleKeyDown);
 
@@ -881,26 +983,29 @@ export const SimplePDFViewer = ({
   }, [currentPage, numPages]);
 
   // Function to get context around a match
-  const getTextContext = (
-    text: string,
-    matchIndex: number,
-    matchLength: number,
-    contextSize: number = 20
-  ) => {
-    const startContext = Math.max(0, matchIndex - contextSize);
-    const endContext = Math.min(
-      text.length,
-      matchIndex + matchLength + contextSize
-    );
+  const getTextContext = useCallback(
+    (
+      text: string,
+      matchIndex: number,
+      matchLength: number,
+      contextSize: number = 20
+    ) => {
+      const startContext = Math.max(0, matchIndex - contextSize);
+      const endContext = Math.min(
+        text.length,
+        matchIndex + matchLength + contextSize
+      );
 
-    return {
-      contextBefore: text.substring(startContext, matchIndex),
-      contextAfter: text.substring(matchIndex + matchLength, endContext),
-    };
-  };
+      return {
+        contextBefore: text.substring(startContext, matchIndex),
+        contextAfter: text.substring(matchIndex + matchLength, endContext),
+      };
+    },
+    []
+  );
 
   // Handle search functionality - completely rewritten for better performance and highlighting
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!searchText || !pdfDocRef.current) return;
 
     try {
@@ -1069,10 +1174,10 @@ export const SimplePDFViewer = ({
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [searchText, pdfDocRef, numPages]);
 
   // Handle search result click - completely rewritten for reliability
-  const handleSearchResultClick = (index: number, page: number) => {
+  const handleSearchResultClick = useCallback((index: number, page: number) => {
     console.log(
       `SimplePDFViewer: Handling search result click: index ${index}, page ${page}`
     );
@@ -1153,10 +1258,10 @@ export const SimplePDFViewer = ({
         }, 300); // Wait for DOM to update after loading state changes
       }, 200); // Wait for page change to be processed
     }, 100); // Wait for loading state to be applied
-  };
+  }, [viewMode, numPages]);
 
   // Clear search - accidentally removed in previous edit
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     setShowSearch(false);
     setShowSearchPanel(false);
     setSearchText("");
@@ -1164,10 +1269,10 @@ export const SimplePDFViewer = ({
     setDetailedSearchResults([]);
     setSearchHighlights(new Map());
     setCurrentSearchIndex(-1);
-  };
+  }, []);
 
   // Navigation functions for search results - updated for reliability
-  const navigateToNextSearchResult = () => {
+  const navigateToNextSearchResult = useCallback(() => {
     if (searchResults.length === 0 || currentSearchIndex === -1) return;
 
     const nextIndex = (currentSearchIndex + 1) % searchResults.length;
@@ -1178,9 +1283,9 @@ export const SimplePDFViewer = ({
 
     // Use our improved handleSearchResultClick function
     handleSearchResultClick(nextIndex, targetPage);
-  };
+  }, [searchResults, currentSearchIndex]);
 
-  const navigateToPrevSearchResult = () => {
+  const navigateToPrevSearchResult = useCallback(() => {
     if (searchResults.length === 0 || currentSearchIndex === -1) return;
 
     const prevIndex =
@@ -1192,31 +1297,31 @@ export const SimplePDFViewer = ({
 
     // Use our improved handleSearchResultClick function
     handleSearchResultClick(prevIndex, targetPage);
-  };
+  }, [searchResults, currentSearchIndex]);
 
   // Function to navigate to a specific search result - updated for reliability
-  const navigateToSearchResult = (
-    resultIndex: number,
-    matchIndex: number = 0
-  ) => {
-    if (resultIndex < 0 || resultIndex >= searchResults.length) return;
+  const navigateToSearchResult = useCallback(
+    (resultIndex: number, matchIndex: number = 0) => {
+      if (resultIndex < 0 || resultIndex >= searchResults.length) return;
 
-    try {
-      // Get the target page
-      const targetPage = searchResults[resultIndex].page;
-      console.log(
-        `navigateToSearchResult: Navigating to index ${resultIndex}, page ${targetPage}`
-      );
+      try {
+        // Get the target page
+        const targetPage = searchResults[resultIndex].page;
+        console.log(
+          `navigateToSearchResult: Navigating to index ${resultIndex}, page ${targetPage}`
+        );
 
-      // Use our improved handleSearchResultClick function
-      handleSearchResultClick(resultIndex, targetPage);
-    } catch (err) {
-      console.error("Error navigating to search result:", err);
-    }
-  };
+        // Use our improved handleSearchResultClick function
+        handleSearchResultClick(resultIndex, targetPage);
+      } catch (err) {
+        console.error("Error navigating to search result:", err);
+      }
+    },
+    [searchResults]
+  );
 
   // Function to render search highlights
-  const renderSearchHighlights = () => {
+  const renderSearchHighlights = useCallback(() => {
     if (
       !searchHighlights.has(currentPage) ||
       searchHighlights.get(currentPage).length === 0
@@ -1285,7 +1390,7 @@ export const SimplePDFViewer = ({
         ))}
       </div>
     );
-  };
+  }, [currentPage, searchHighlights, scale, fitToWidth, rotation]);
 
   // Clear search when changing view mode
   useEffect(() => {
@@ -1323,7 +1428,7 @@ export const SimplePDFViewer = ({
   }, [currentPage, searchHighlights, searchResults, currentSearchIndex]);
 
   // Render the PDF viewer based on view mode
-  const renderPDFViewer = () => {
+  const renderPDFViewer = useCallback(() => {
     if (viewMode === "continuous") {
       return (
         <>
@@ -1373,7 +1478,7 @@ export const SimplePDFViewer = ({
 
     // Fallback
     return <canvas ref={canvasRef} className="pdf-canvas" />;
-  };
+  }, [currentPage, numPages, viewMode]);
 
   if (loading) {
     return (
@@ -1730,100 +1835,7 @@ export const SimplePDFViewer = ({
         {showSidebar && (
           <div className={`pdf-sidebar ${showSidebar ? "open" : ""}`}>
             <div className="pdf-sidebar-content">
-              {sidebarTab === "outline" && (
-                <>
-                  <h3>Document Outline</h3>
-                  {outline.length > 0 ? (
-                    <ul className="pdf-outline-list">
-                      {outline.map((item, index) => (
-                        <li key={index} className="pdf-outline-item">
-                          <button
-                            onClick={() => handleOutlineItemClick(item)}
-                            style={{
-                              paddingLeft: `${item.level * 12}px`,
-                            }}
-                          >
-                            {item.title}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-gray-400 text-sm">
-                      No outline available for this document.
-                    </p>
-                  )}
-                </>
-              )}
-
-              {sidebarTab === "bookmarks" && (
-                <>
-                  <h3>Bookmarks</h3>
-                  {bookmarks.length > 0 ? (
-                    <ul className="pdf-bookmarks-list">
-                      {bookmarks.map((bookmark, index) => (
-                        <li key={index} className="pdf-bookmark-item">
-                          <button
-                            onClick={() => handleBookmarkClick(bookmark)}
-                          >
-                            {bookmark.title}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div>
-                      <p className="text-gray-400 text-sm mb-4">
-                        No bookmarks yet. Add bookmarks to pages for quick
-                        access.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          addBookmark({
-                            page: currentPage,
-                            title: `Page ${currentPage}`,
-                          })
-                        }
-                        className="w-full"
-                      >
-                        <Bookmark className="h-4 w-4 mr-2" />
-                        Bookmark Current Page
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {sidebarTab === "thumbnails" && (
-                <>
-                  <h3>Page Thumbnails</h3>
-                  <div className="pdf-thumbnail-grid">
-                    {Array.from({ length: numPages }, (_, i) => i + 1).map(
-                      (pageNum) => (
-                        <div
-                          key={`thumb-${pageNum}`}
-                          className={`pdf-thumbnail-item ${
-                            pageNum === currentPage ? "current" : ""
-                          }`}
-                          onClick={() => setCurrentPage(pageNum)}
-                        >
-                          <div
-                            className="pdf-thumbnail"
-                            ref={(el) => {
-                              if (el && !thumbnailsRendered.includes(pageNum)) {
-                                renderThumbnail(pageNum, el);
-                              }
-                            }}
-                          ></div>
-                          <div className="text-center">Page {pageNum}</div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </>
-              )}
+              {renderSidebarContent()}
             </div>
           </div>
         )}
@@ -1866,7 +1878,9 @@ export const SimplePDFViewer = ({
           )}
 
           {/* Search highlights container */}
-          <div className="search-highlights-container" ref={highlightsRef}></div>
+          <div className="search-highlights-container" ref={highlightsRef}>
+            {renderSearchHighlights()}
+          </div>
 
           {/* Floating page number indicator */}
           {numPages > 0 && !loading && !error && (

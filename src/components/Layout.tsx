@@ -35,7 +35,7 @@ const Layout: React.FC<LayoutProps> = ({ children, hideFooter = false }) => {
   }, []);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultExpanded={true}>
       <div
         className={`min-h-screen flex flex-col bg-background w-full transition-colors duration-200`}
       >

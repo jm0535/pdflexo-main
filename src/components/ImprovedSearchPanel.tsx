@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { X, List } from "lucide-react";
+import { X } from "lucide-react";
 
 interface ImprovedSearchPanelProps {
   showPanel: boolean;
@@ -28,20 +28,18 @@ const ImprovedSearchPanel: React.FC<ImprovedSearchPanelProps> = ({
     0
   );
 
-  // Direct click handler that forces page navigation
+  // Simple click handler that just calls the parent handler
   const handleResultClick = (index: number, page: number) => {
     console.log(
       `ImprovedSearchPanel: Clicked on result ${index}, page ${page}`
     );
-
-    // Call the parent handler which now has improved navigation logic
     onResultClick(index, page);
   };
 
   return (
     <div className="search-panel">
       <div className="search-panel-header">
-        <h3>Search Results (Improved)</h3>
+        <h3>Search Results</h3>
         <Button
           variant="ghost"
           size="sm"

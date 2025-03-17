@@ -1,16 +1,17 @@
 // PDFlexo Service Worker for caching and offline support
-const CACHE_NAME = "pdflexo-cache-v1";
+const CACHE_NAME = "pdflexo-cache-v3"; // Incremented version to force cache refresh
 const STATIC_ASSETS = [
   "/",
   "/index.html",
   "/assets/index.css",
   "/assets/index.js",
   "/favicon.ico",
-  "/logo.svg",
+  "/logo.svg"
 ];
 
 // Install event - cache static assets
 self.addEventListener("install", (event) => {
+  console.log("Service Worker: Installing new version");
   event.waitUntil(
     caches
       .open(CACHE_NAME)
@@ -18,12 +19,13 @@ self.addEventListener("install", (event) => {
         console.log("Service Worker: Caching static assets");
         return cache.addAll(STATIC_ASSETS);
       })
-      .then(() => self.skipWaiting())
+      .then(() => self.skipWaiting()) // Force activation without waiting
   );
 });
 
 // Activate event - clean up old caches
 self.addEventListener("activate", (event) => {
+  console.log("Service Worker: Activating new version");
   event.waitUntil(
     caches
       .keys()
@@ -37,11 +39,14 @@ self.addEventListener("activate", (event) => {
           })
         );
       })
-      .then(() => self.clients.claim())
+      .then(() => {
+        console.log("Service Worker: Now controlling all clients");
+        return self.clients.claim(); // Take control of all clients
+      })
   );
 });
 
-// Fetch event - serve from cache or network
+// Fetch event - serve from cache or network with network-first strategy for HTML and JS/CSS
 self.addEventListener("fetch", (event) => {
   // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
@@ -53,48 +58,74 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      // Return cached response if available
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+  // Network-first strategy for HTML and JS/CSS files to ensure updates are applied
+  const isHtmlOrAsset = event.request.url.endsWith(".html") ||
+                        event.request.url.endsWith(".js") ||
+                        event.request.url.endsWith(".css") ||
+                        event.request.mode === "navigate";
 
-      // Otherwise fetch from network
-      return fetch(event.request)
+  if (isHtmlOrAsset) {
+    event.respondWith(
+      fetch(event.request)
         .then((response) => {
-          // Don't cache if not a valid response
-          if (
-            !response ||
-            response.status !== 200 ||
-            response.type !== "basic"
-          ) {
-            return response;
-          }
-
-          // Clone the response as it can only be consumed once
+          // Clone the response
           const responseToCache = response.clone();
-
-          // Cache the new response
+          // Update the cache with the new version
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
           });
-
           return response;
         })
-        .catch((error) => {
-          console.error("Service Worker fetch failed:", error);
-          // Return a custom offline page if available
-          if (event.request.mode === "navigate") {
-            return caches.match("/offline.html");
-          }
-          return new Response("Network error happened", {
-            status: 408,
-            headers: { "Content-Type": "text/plain" },
-          });
-        });
-    })
-  );
+        .catch(() => {
+          // If network fails, try to serve from cache
+          return caches.match(event.request);
+        })
+    );
+  } else {
+    // Cache-first strategy for other assets
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        // Return cached response if available
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+
+        // Otherwise fetch from network
+        return fetch(event.request)
+          .then((response) => {
+            // Don't cache if not a valid response
+            if (
+              !response ||
+              response.status !== 200 ||
+              response.type !== "basic"
+            ) {
+              return response;
+            }
+
+            // Clone the response as it can only be consumed once
+            const responseToCache = response.clone();
+
+            // Cache the new response
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+
+            return response;
+          })
+          .catch((error) => {
+            console.error("Service Worker fetch failed:", error);
+            // Return a custom offline page if available
+            if (event.request.mode === "navigate") {
+              return caches.match("/offline.html");
+            }
+            return new Response("Network error happened", {
+              status: 408,
+              headers: { "Content-Type": "text/plain" }
+            });
+          })
+      })
+    );
+  }
 });
 
 // Cache PDF files separately with a special strategy
@@ -137,7 +168,7 @@ self.addEventListener("fetch", (event) => {
               console.error("PDF fetch failed:", error);
               return new Response("Failed to load PDF", {
                 status: 408,
-                headers: { "Content-Type": "text/plain" },
+                headers: { "Content-Type": "text/plain" }
               });
             });
         });
@@ -150,6 +181,20 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
+  }
+
+  // Add a new message type to clear the cache
+  if (event.data && event.data.type === "CLEAR_CACHE") {
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            console.log("Service Worker: Clearing cache", cacheName);
+            return caches.delete(cacheName);
+          })
+        );
+      })
+    );
   }
 });
 
@@ -202,38 +247,28 @@ async function syncPDFs() {
 
         const response = await fetch("/api/upload", {
           method: "POST",
-          body: formData,
+          body: formData
         });
 
         if (response.ok) {
-          // Remove from pending uploads if successful
-          await removePendingUpload(upload.id);
           console.log(`Successfully synced upload: ${upload.id}`);
-
-          // Notify the client about successful upload
-          const clients = await self.clients.matchAll();
-          clients.forEach((client) => {
-            client.postMessage({
-              type: "UPLOAD_SYNCED",
-              uploadId: upload.id,
-              success: true,
-            });
-          });
+          await removePendingUpload(upload.id);
         } else {
-          console.error(
-            `Failed to sync upload: ${upload.id}, status: ${response.status}`
-          );
+          console.error(`Failed to sync upload: ${upload.id}`);
         }
       } catch (error) {
-        console.error("Failed to sync PDF:", error);
+        console.error(`Error syncing upload ${upload.id}:`, error);
       }
     }
+
+    return true;
   } catch (error) {
     console.error("Error in syncPDFs:", error);
+    return false;
   }
 }
 
-// Helper functions for IndexedDB operations
+// Get all pending uploads from IndexedDB
 async function getPendingUploads() {
   try {
     const db = await openDB();
@@ -256,6 +291,7 @@ async function getPendingUploads() {
   }
 }
 
+// Remove a pending upload from IndexedDB
 async function removePendingUpload(id) {
   try {
     const db = await openDB();
@@ -265,7 +301,7 @@ async function removePendingUpload(id) {
       const request = store.delete(id);
 
       request.onsuccess = () => {
-        resolve();
+        resolve(true);
       };
 
       request.onerror = (event) => {
@@ -274,6 +310,7 @@ async function removePendingUpload(id) {
     });
   } catch (error) {
     console.error("Error in removePendingUpload:", error);
+    return false;
   }
 }
 
@@ -287,7 +324,7 @@ async function addPendingUpload(upload) {
       const request = store.add(upload);
 
       request.onsuccess = () => {
-        resolve(request.result);
+        resolve(true);
       };
 
       request.onerror = (event) => {
@@ -296,6 +333,7 @@ async function addPendingUpload(upload) {
     });
   } catch (error) {
     console.error("Error in addPendingUpload:", error);
+    return false;
   }
 }
 
@@ -304,21 +342,11 @@ self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "ADD_PENDING_UPLOAD") {
     addPendingUpload(event.data.upload)
       .then(() => {
-        // Notify the client that the upload was queued
-        event.source.postMessage({
-          type: "UPLOAD_QUEUED",
-          uploadId: event.data.upload.id,
-          success: true,
-        });
+        event.ports[0].postMessage({ success: true });
       })
       .catch((error) => {
-        console.error("Failed to queue upload:", error);
-        event.source.postMessage({
-          type: "UPLOAD_QUEUED",
-          uploadId: event.data.upload.id,
-          success: false,
-          error: error.toString(),
-        });
+        console.error("Failed to add pending upload:", error);
+        event.ports[0].postMessage({ success: false, error: error.toString() });
       });
   }
 });

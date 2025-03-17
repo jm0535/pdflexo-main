@@ -6,6 +6,7 @@ import {
   clearPdfCache,
 } from "@/lib/pdfjs-setup";
 import "./SimplePDFViewer.css";
+import "./PDFOutlineStyles.css";
 import {
   ArrowDown,
   ArrowLeft,
@@ -27,13 +28,14 @@ import {
   ZoomIn,
   ZoomOut,
   AlertCircle,
-  AlignJustify
+  AlignJustify,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ImprovedSearchPanel from "./ImprovedSearchPanel";
+import PDFOutlineView from "./PDFOutlineView";
 
 // Initialize PDF.js worker
 initPdfWorker();
@@ -109,125 +111,1071 @@ export const SimplePDFViewer = ({
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const highlightsRef = useRef<HTMLDivElement>(null);
 
+  // UTILITY FUNCTIONS - These should come first as they don't depend on other functions
+
+  // Function to get context around a match
+  const getTextContext = useCallback(
+    (
+      text: string,
+      matchIndex: number,
+      matchLength: number,
+      contextSize: number = 20
+    ) => {
+      const startContext = Math.max(0, matchIndex - contextSize);
+      const endContext = Math.min(
+        text.length,
+        matchIndex + matchLength + contextSize
+      );
+
+      return {
+        contextBefore: text.substring(startContext, matchIndex),
+        contextAfter: text.substring(matchIndex + matchLength, endContext),
+      };
+    },
+    []
+  );
+
+  // Function to render search highlights
+  const renderSearchHighlights = useCallback(() => {
+    if (
+      !searchHighlights ||
+      searchHighlights.size === 0 ||
+      !containerRef.current
+    )
+      return null;
+
+    // Only render highlights for the current page
+    const pageHighlights = searchHighlights.get(currentPage);
+    if (!pageHighlights || pageHighlights.length === 0) return null;
+
+    // Get the canvas for the current page
+    const canvas = document.querySelector(
+      `.pdf-canvas[data-page-number="${currentPage}"]`
+    );
+    if (!canvas) return null;
+
+    // Get canvas position
+    const canvasRect = canvas.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
+
+    // Calculate offset relative to the container
+    const offsetX = canvasRect.left - containerRect.left;
+    const offsetY = canvasRect.top - containerRect.top;
+
+    // Create highlight elements
+    return (
+      <div className="pdf-search-highlights">
+        {pageHighlights.map((highlight, idx) => {
+          const { position } = highlight;
+          if (!position) return null;
+
+          // Calculate position relative to the container
+          const style = {
+            left: `${offsetX + position.left}px`,
+            top: `${offsetY + position.top}px`,
+            width: `${position.width}px`,
+            height: `${position.height}px`,
+            position: "absolute" as const,
+            backgroundColor: "rgba(255, 255, 0, 0.3)",
+            pointerEvents: "none" as const,
+            zIndex: 1,
+          };
+
+          return <div key={`highlight-${currentPage}-${idx}`} style={style} />;
+        })}
+      </div>
+    );
+  }, [searchHighlights, currentPage, containerRef]);
+
+  // EVENT HANDLERS - These depend on utility functions but not on each other
+
+  // Handle search result click
+  const handleSearchResultClick = useCallback(
+    (index: number, page: number) => {
+      console.log(
+        `SimplePDFViewer: Handling search result click: index ${index}, page ${page}`
+      );
+
+      // Validate page number
+      if (page < 1 || page > numPages) {
+        console.error(
+          `Invalid page number: ${page}. Valid range is 1-${numPages}`
+        );
+        return;
+      }
+
+      // First update the current search index
+      setCurrentSearchIndex(index);
+
+      // Then update the current page
+      setCurrentPage(page);
+
+      // Use a timeout to ensure the page has time to render before attempting to scroll
+      setTimeout(() => {
+        try {
+          // Try to find the canvas for this page
+          const pageElement = document.querySelector(
+            `.pdf-canvas[data-page-number="${page}"]`
+          );
+          if (pageElement) {
+            pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+          } else {
+            console.warn(`Could not find canvas element for page ${page}`);
+            // Try to find any canvas element that might contain this page
+            const canvasElements = document.querySelectorAll(".pdf-canvas");
+            console.log(`Found ${canvasElements.length} canvas elements`);
+
+            // Log all canvas elements for debugging
+            canvasElements.forEach((el, i) => {
+              console.log(`Canvas ${i}:`, el.getAttribute("data-page-number"));
+            });
+          }
+        } catch (err) {
+          console.error("Error scrolling to page:", err);
+        }
+      }, 300);
+    },
+    [numPages]
+  );
+
+  // Navigate to next search result
+  const navigateToNextSearchResult = useCallback(() => {
+    if (searchResults.length === 0) return;
+
+    // Calculate next index
+    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+    const targetPage = searchResults[nextIndex].page;
+
+    console.log(
+      `SimplePDFViewer: Navigating to next result: index ${nextIndex}, page ${targetPage}`
+    );
+
+    // Use our improved handleSearchResultClick function
+    handleSearchResultClick(nextIndex, targetPage);
+  }, [searchResults, currentSearchIndex, handleSearchResultClick]);
+
+  // Navigate to previous search result
+  const navigateToPrevSearchResult = useCallback(() => {
+    if (searchResults.length === 0) return;
+
+    // Calculate previous index
+    const prevIndex =
+      (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
+    const targetPage = searchResults[prevIndex].page;
+
+    console.log(
+      `SimplePDFViewer: Navigating to previous result: index ${prevIndex}, page ${targetPage}`
+    );
+
+    // Use our improved handleSearchResultClick function
+    handleSearchResultClick(prevIndex, targetPage);
+  }, [searchResults, currentSearchIndex, handleSearchResultClick]);
+
+  // Function to navigate to a specific search result
+  const navigateToSearchResult = useCallback(
+    (resultIndex: number) => {
+      if (resultIndex < 0 || resultIndex >= searchResults.length) return;
+
+      try {
+        // Get the target page
+        const targetPage = searchResults[resultIndex].page;
+
+        console.log(
+          `SimplePDFViewer: Navigating to result: index ${resultIndex}, page ${targetPage}`
+        );
+
+        // Use our improved handleSearchResultClick function
+        handleSearchResultClick(resultIndex, targetPage);
+      } catch (err) {
+        console.error("Error navigating to search result:", err);
+      }
+    },
+    [searchResults, handleSearchResultClick]
+  );
+
+  // Clear search
+  const clearSearch = useCallback(() => {
+    setShowSearch(false);
+    setShowSearchPanel(false);
+    setShowSearchResults(false);
+    setSearchText("");
+    setSearchResults([]);
+    setDetailedSearchResults([]);
+    setSearchHighlights(new Map());
+    setCurrentSearchIndex(-1);
+  }, []);
+
+  // Handle search functionality
+  const handleSearch = useCallback(async () => {
+    if (!searchText || !pdfDocRef.current) return;
+
+    try {
+      setIsSearching(true);
+      setSearchResults([]);
+      setDetailedSearchResults([]);
+      setSearchHighlights(new Map());
+
+      const results: any[] = [];
+      const detailedResults: any[] = [];
+      const highlights = new Map();
+      let totalMatchCount = 0;
+
+      // Case insensitive search
+      const searchTermLower = searchText.toLowerCase().trim();
+
+      if (searchTermLower.length === 0) {
+        setIsSearching(false);
+        return;
+      }
+
+      // Show a loading indicator in the search bar
+      const searchStatusElement = document.getElementById("search-status");
+      if (searchStatusElement) {
+        searchStatusElement.textContent = "Searching...";
+      }
+
+      for (let i = 1; i <= numPages; i++) {
+        try {
+          // Get the page
+          const page = await pdfDocRef.current.getPage(i);
+
+          // Get text content with item positions
+          const textContent = await page.getTextContent();
+          const viewport = page.getViewport({ scale: 1.0, rotation }); // Use scale 1.0 for position calculations
+
+          // Process text content for this page
+          let pageHasMatches = false;
+          const pageMatches: any[] = [];
+
+          // Process each text item to find matches
+          textContent.items.forEach((item: any) => {
+            if (!item.str) return; // Skip items without text
+
+            const itemText = item.str;
+            const itemTextLower = itemText.toLowerCase();
+
+            // Find all occurrences of the search term in this text item
+            let startIndex = 0;
+            while (true) {
+              const matchIndex = itemTextLower.indexOf(
+                searchTermLower,
+                startIndex
+              );
+              if (matchIndex === -1) break;
+
+              pageHasMatches = true;
+              totalMatchCount++;
+
+              // Calculate position for highlighting
+              // Use the transform matrix from the text item for accurate positioning
+              const [scaleX, skewX, skewY, scaleY, transX, transY] =
+                item.transform;
+
+              // Calculate position based on the text's transform and the match position
+              const position = {
+                left: transX + matchIndex * scaleX,
+                top: transY - scaleY, // Adjust for PDF coordinate system
+                width: searchTermLower.length * scaleX,
+                height: Math.abs(scaleY) * 1.2, // Slightly taller than the text
+              };
+
+              // Get context around the match
+              const { contextBefore, contextAfter } = getTextContext(
+                itemText,
+                matchIndex,
+                searchTermLower.length
+              );
+
+              // Add match to page matches
+              pageMatches.push({
+                text: itemText.substring(
+                  matchIndex,
+                  matchIndex + searchTermLower.length
+                ),
+                position: position,
+                originalText: itemText,
+                contextBefore,
+                contextAfter,
+              });
+
+              // Move to next potential match
+              startIndex = matchIndex + searchTermLower.length;
+            }
+          });
+
+          // If we found matches on this page, add to results
+          if (pageHasMatches) {
+            // Join all text items for the basic result
+            const pageText = textContent.items
+              .map((item: any) => item.str)
+              .join(" ");
+
+            // Basic result for navigation
+            results.push({
+              page: i,
+              text: pageText,
+              matchCount: pageMatches.length,
+            });
+
+            // Add detailed result
+            detailedResults.push({
+              page: i,
+              text: pageText,
+              matches: pageMatches,
+            });
+
+            // Store highlights for this page
+            highlights.set(i, pageMatches);
+
+            // Update search status
+            if (searchStatusElement) {
+              searchStatusElement.textContent = `Found ${totalMatchCount} matches on ${results.length} pages...`;
+            }
+          }
+        } catch (err) {
+          console.error(`Error searching page ${i}:`, err);
+        }
+      }
+
+      // Update state with search results
+      setSearchResults(results);
+      setDetailedSearchResults(detailedResults);
+      setSearchHighlights(highlights);
+
+      // Show search panel if we have results
+      if (results.length > 0) {
+        setShowSearchPanel(true);
+        setShowSearchResults(true);
+
+        // Navigate to first result if found
+        setCurrentSearchIndex(0);
+        setCurrentPage(results[0].page);
+
+        // Scroll to the page with the first result
+        setTimeout(() => {
+          const pageElement = document.querySelector(
+            `.pdf-canvas[data-page-number="${results[0].page}"]`
+          );
+          if (pageElement) {
+            pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 300);
+      } else {
+        // No results found
+        if (searchStatusElement) {
+          searchStatusElement.textContent = "No matches found";
+        }
+      }
+    } catch (err) {
+      console.error("Error during search:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [
+    searchText,
+    pdfDocRef,
+    numPages,
+    getTextContext,
+    setCurrentPage,
+    rotation,
+  ]);
+
+  // Calculate appropriate scale based on container width
+  const calculateScale = useCallback(() => {
+    if (!containerRef.current || !pdfDocRef.current) return scale;
+
+    const containerWidth =
+      containerRef.current.clientWidth - (showSidebar ? 250 : 0);
+    // Use a fixed width for consistency (85% of container width)
+    const targetWidth = containerWidth * 0.85;
+
+    // For two pages view, divide the width by 2 to fit two pages side by side
+    if (viewMode === "twoPages") {
+      return targetWidth / 2 / 595; // 595 is a standard PDF width in points
+    }
+
+    return targetWidth / 595; // 595 is a standard PDF width in points
+  }, [scale, showSidebar, viewMode, containerRef, pdfDocRef]);
+
+  // Handle zoom in
+  const handleZoomIn = useCallback(() => {
+    setFitToWidth(false);
+    setScale((prevScale) => Math.min(prevScale + 0.1, 3.0));
+  }, []);
+
+  // Handle zoom out
+  const handleZoomOut = useCallback(() => {
+    setFitToWidth(false);
+    setScale((prevScale) => Math.max(prevScale - 0.1, 0.5));
+  }, []);
+
+  // Handle rotation
+  const handleRotate = useCallback(() => {
+    setRotation((prevRotation) => (prevRotation + 90) % 360);
+  }, []);
+
+  // Toggle fit to width
+  const toggleFitToWidth = useCallback(() => {
+    setFitToWidth((prev) => !prev);
+    if (!fitToWidth) {
+      const newScale = calculateScale();
+      if (newScale) setScale(newScale);
+    }
+  }, [fitToWidth, calculateScale]);
+
+  // Toggle fullscreen
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
+  // Toggle sidebar
+  const toggleSidebar = useCallback(
+    (tab: SidebarTab) => {
+      if (showSidebar && sidebarTab === tab) {
+        setShowSidebar(false);
+      } else {
+        setShowSidebar(true);
+        setSidebarTab(tab);
+      }
+    },
+    [showSidebar, sidebarTab]
+  );
+
+  // Toggle view mode
+  const toggleViewMode = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    // Reset to page 1 when changing view mode
+    setCurrentPage(1);
+  }, []);
+
+  // Add bookmark
+  const addBookmark = useCallback(() => {
+    // Check if this page is already bookmarked
+    const existingBookmark = bookmarks.find((b) => b.page === currentPage);
+    if (existingBookmark) {
+      // Remove the bookmark if it exists
+      setBookmarks((prev) => prev.filter((b) => b.page !== currentPage));
+    } else {
+      // Add a new bookmark
+      const newBookmark: BookmarkItem = {
+        id: `bookmark-${Date.now()}`,
+        page: currentPage,
+        title: `Page ${currentPage}`,
+        timestamp: Date.now(),
+      };
+      setBookmarks((prev) => [...prev, newBookmark]);
+    }
+  }, [bookmarks, currentPage]);
+
+  // Handle bookmark click
+  const handleBookmarkClick = useCallback((bookmark: BookmarkItem) => {
+    if (bookmark && bookmark.page) {
+      const pageNumber = bookmark.page;
+      setCurrentPage(pageNumber);
+
+      // Ensure the page is rendered and scrolled into view
+      setTimeout(() => {
+        const pageElement = document.querySelector(
+          `.pdf-canvas[data-page-number="${pageNumber}"]`
+        );
+        if (pageElement) {
+          pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
+    }
+  }, []);
+
+  // Handle outline item click
+  const handleOutlineItemClick = useCallback(
+    (item: any) => {
+      if (!item || !pdfDocRef.current) return;
+
+      try {
+        console.log("Outline item clicked:", item);
+
+        // Force a re-render to ensure the page is properly updated
+        setLoading(true);
+
+        // Get the destination from the outline item
+        const dest = item.dest;
+
+        const navigateToPage = (pageNumber: number) => {
+          console.log(`Navigating to page ${pageNumber} of ${numPages}`);
+
+          // Validate page number
+          if (pageNumber < 1 || pageNumber > numPages) {
+            console.error(
+              `Invalid page number: ${pageNumber}. Valid range is 1-${numPages}`
+            );
+            pageNumber = 1; // Default to first page
+          }
+
+          // Update current page
+          setCurrentPage(pageNumber);
+
+          // Use a longer timeout to ensure the page has time to render
+          setTimeout(() => {
+            setLoading(false);
+
+            // Try multiple methods to find and scroll to the page
+            setTimeout(() => {
+              try {
+                // Method 1: Try to find the canvas by data-page-number attribute
+                const pageElement = document.querySelector(
+                  `.pdf-canvas[data-page-number="${pageNumber}"]`
+                );
+
+                if (pageElement) {
+                  console.log(
+                    `Found page element for page ${pageNumber} using data-page-number`
+                  );
+                  pageElement.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                  return;
+                }
+
+                // Method 2: Try to find the canvas by ID
+                const canvasById = document.getElementById(
+                  `pdf-canvas-page-${pageNumber}`
+                );
+                if (canvasById) {
+                  console.log(
+                    `Found page element for page ${pageNumber} using ID`
+                  );
+                  canvasById.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                  return;
+                }
+
+                // Method 3: Try to find any canvas elements and look for one with matching page
+                const allCanvases = document.querySelectorAll(".pdf-canvas");
+                console.log(`Found ${allCanvases.length} canvas elements`);
+
+                for (let i = 0; i < allCanvases.length; i++) {
+                  const canvas = allCanvases[i];
+                  const canvasPage = canvas.getAttribute("data-page-number");
+                  console.log(`Canvas ${i}: page ${canvasPage}`);
+
+                  if (canvasPage === pageNumber.toString()) {
+                    console.log(`Found matching canvas for page ${pageNumber}`);
+                    canvas.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                    return;
+                  }
+                }
+
+                console.warn(
+                  `Could not find canvas element for page ${pageNumber}`
+                );
+              } catch (err) {
+                console.error("Error scrolling to page:", err);
+              }
+            }, 300);
+          }, 200);
+        };
+
+        if (typeof dest === "string") {
+          // Named destination - need to resolve it
+          console.log("Resolving named destination:", dest);
+          pdfDocRef.current
+            .getDestination(dest)
+            .then((destArray) => {
+              if (!destArray || !destArray[0]) {
+                console.error("Invalid destination array:", destArray);
+                navigateToPage(1); // Default to first page
+                return;
+              }
+
+              try {
+                pdfDocRef
+                  .current!.getPageIndex(destArray[0])
+                  .then((pageIndex) => {
+                    const pageNumber = pageIndex + 1;
+                    console.log(
+                      "Resolved named destination to page:",
+                      pageNumber
+                    );
+                    navigateToPage(pageNumber);
+                  })
+                  .catch((err) => {
+                    console.error("Error getting page index:", err);
+                    // Try to extract page number from the destination array if possible
+                    if (
+                      destArray.length > 1 &&
+                      typeof destArray[1] === "number"
+                    ) {
+                      navigateToPage(destArray[1]);
+                    } else {
+                      navigateToPage(1); // Default to first page
+                    }
+                  });
+              } catch (err) {
+                console.error("Error processing destination:", err);
+                navigateToPage(1); // Default to first page
+              }
+            })
+            .catch((err) => {
+              console.error("Error resolving named destination:", err);
+              navigateToPage(1); // Default to first page
+            });
+        } else if (Array.isArray(dest)) {
+          // Explicit destination
+          console.log("Processing array destination:", dest);
+          try {
+            if (!dest[0]) {
+              console.error("Invalid destination array:", dest);
+              navigateToPage(1); // Default to first page
+              return;
+            }
+
+            pdfDocRef.current
+              .getPageIndex(dest[0])
+              .then((pageIndex) => {
+                const pageNumber = pageIndex + 1;
+                console.log("Resolved array destination to page:", pageNumber);
+                navigateToPage(pageNumber);
+              })
+              .catch((err) => {
+                console.error("Error getting page index:", err);
+                // Try to extract page number from the destination array if possible
+                if (dest.length > 1 && typeof dest[1] === "number") {
+                  navigateToPage(dest[1]);
+                } else {
+                  navigateToPage(1); // Default to first page
+                }
+              });
+          } catch (err) {
+            console.error("Error processing array destination:", err);
+            navigateToPage(1); // Default to first page
+          }
+        } else if (item.pageNumber) {
+          // Some outline items might have pageNumber directly
+          console.log(
+            "Using direct pageNumber from outline item:",
+            item.pageNumber
+          );
+          const pageNumber = parseInt(item.pageNumber, 10);
+          navigateToPage(pageNumber);
+        } else {
+          console.error("Unsupported outline destination format:", item);
+          navigateToPage(1); // Default to first page
+        }
+      } catch (error) {
+        console.error("Error navigating to outline item:", error);
+        setLoading(false);
+      }
+    },
+    [pdfDocRef, numPages]
+  );
+
   // Handle print function
   const handlePrint = useCallback(() => {
-    if (!url) return;
-    
-    // Create an iframe to print the PDF
-    const printIframe = document.createElement('iframe');
-    printIframe.style.display = 'none';
-    printIframe.src = url;
-    
-    printIframe.onload = () => {
-      try {
-        printIframe.contentWindow?.print();
-      } catch (error) {
-        console.error('Error printing document:', error);
-      }
-      
-      // Remove the iframe after printing
-      setTimeout(() => {
-        document.body.removeChild(printIframe);
-      }, 1000);
-    };
-    
-    document.body.appendChild(printIframe);
-  }, [url]);
+    if (!url || !pdfDocRef.current) return;
+
+    try {
+      // Show loading indicator
+      setLoading(true);
+
+      // Create an iframe to print the PDF
+      const printIframe = document.createElement("iframe");
+      printIframe.style.display = "none";
+      document.body.appendChild(printIframe);
+
+      // Set the source to the PDF URL
+      printIframe.src = url;
+
+      printIframe.onload = () => {
+        try {
+          // Hide loading indicator
+          setLoading(false);
+
+          // Trigger print dialog
+          setTimeout(() => {
+            if (printIframe.contentWindow) {
+              printIframe.contentWindow.focus();
+              printIframe.contentWindow.print();
+            }
+          }, 500);
+        } catch (error) {
+          console.error("Error printing document:", error);
+          setLoading(false);
+        }
+
+        // Remove the iframe after printing
+        setTimeout(() => {
+          if (document.body.contains(printIframe)) {
+            document.body.removeChild(printIframe);
+          }
+        }, 2000);
+      };
+
+      // Handle error case
+      printIframe.onerror = () => {
+        console.error("Error loading PDF for printing");
+        setLoading(false);
+
+        // Remove the iframe
+        if (document.body.contains(printIframe)) {
+          document.body.removeChild(printIframe);
+        }
+
+        // Fallback method: open PDF in new tab for printing
+        window.open(url, "_blank");
+      };
+    } catch (error) {
+      console.error("Error setting up print:", error);
+      setLoading(false);
+
+      // Fallback method: open PDF in new tab for printing
+      window.open(url, "_blank");
+    }
+  }, [url, pdfDocRef]);
 
   // Handle download function
   const handleDownload = useCallback(() => {
     if (!url) return;
-    
+
     // Create a temporary anchor element
-    const downloadLink = document.createElement('a');
+    const downloadLink = document.createElement("a");
     downloadLink.href = url;
-    
+
     // Extract filename from URL or use a default name
-    const filename = url.split('/').pop() || 'document.pdf';
+    const filename = url.split("/").pop() || "document.pdf";
     downloadLink.download = filename;
-    
+
     // Append to the document, click it, and remove it
     document.body.appendChild(downloadLink);
     downloadLink.click();
     document.body.removeChild(downloadLink);
   }, [url]);
 
-  // Handle bookmark click
-  const handleBookmarkClick = useCallback((bookmark: BookmarkItem) => {
-    if (bookmark && bookmark.page) {
-      setCurrentPage(bookmark.page);
+  // Go to previous page
+  const goToPreviousPage = useCallback(() => {
+    if (currentPage > 1) {
+      setCurrentPage((prev) => prev - 1);
+
+      // Scroll to the new page
+      setTimeout(() => {
+        const pageElement = document.querySelector(
+          `.pdf-canvas[data-page-number="${currentPage - 1}"]`
+        );
+        if (pageElement) {
+          pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
     }
+  }, [currentPage]);
+
+  // Go to next page
+  const goToNextPage = useCallback(() => {
+    if (currentPage < numPages) {
+      setCurrentPage((prev) => prev + 1);
+
+      // Scroll to the new page
+      setTimeout(() => {
+        const pageElement = document.querySelector(
+          `.pdf-canvas[data-page-number="${currentPage + 1}"]`
+        );
+        if (pageElement) {
+          pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
+    }
+  }, [currentPage, numPages]);
+
+  // Recalculate scale on window resize
+  const handleResize = useCallback(() => {
+    if (fitToWidth) {
+      const newScale = calculateScale() || scale;
+      if (newScale) {
+        setScale(newScale);
+      }
+    }
+  }, [calculateScale, fitToWidth, scale]);
+
+  // Handle fullscreen change
+  const handleFullscreenChange = useCallback(() => {
+    setIsFullscreen(!!document.fullscreenElement);
   }, []);
 
-  // Handle retry loading PDF
+  // Handle retry when there's an error
   const handleRetry = useCallback(() => {
     setError(null);
     setLoading(true);
-    
-    // Re-initialize the PDF loading process
-    if (url) {
-      initPdfWorker();
-      loadPdfDocument(url)
-        .then((pdfDoc) => {
-          pdfDocRef.current = pdfDoc;
-          setNumPages(pdfDoc.numPages);
-          if (onTotalPagesChange) {
-            onTotalPagesChange(pdfDoc.numPages);
-          }
-          setLoading(false);
-        })
-        .catch((err) => {
-          console.error("Error loading PDF:", err);
-          setError("Failed to load PDF. Please try again.");
-          setLoading(false);
-        });
-    }
-  }, [url, onTotalPagesChange]);
 
-  // Handle scroll event in the PDF viewer
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (!viewerRef.current || !pdfDocRef.current || viewMode !== "continuous") return;
-    
-    const container = e.currentTarget;
-    const scrollTop = container.scrollTop;
-    const clientHeight = container.clientHeight;
-    const scrollHeight = container.scrollHeight;
-    
-    // Determine which page is most visible in the viewport
-    const pageElements = container.querySelectorAll('.pdf-page');
-    if (pageElements.length === 0) return;
-    
-    let mostVisiblePage = 1;
-    let maxVisibility = 0;
-    
-    pageElements.forEach((pageEl) => {
-      const rect = pageEl.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      
-      // Calculate how much of the page is visible
-      const visibleTop = Math.max(rect.top, containerRect.top);
-      const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
-      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
-      
-      // Get page number from data attribute
-      const pageNumber = parseInt(pageEl.getAttribute('data-page-number') || '1', 10);
-      
-      if (visibleHeight > maxVisibility) {
-        maxVisibility = visibleHeight;
-        mostVisiblePage = pageNumber;
+    // Force a complete re-render by clearing rendered pages
+    setRenderedPages([]);
+    canvasesRef.current.clear();
+
+    // Add a delay to ensure DOM updates
+    setTimeout(() => {
+      // Then set loading to false to trigger re-render
+      setLoading(false);
+    }, 500);
+  }, []);
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      // Prevent handling if inside an input field
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
       }
-    });
-    
-    // Update current page if it changed
-    if (mostVisiblePage !== currentPage) {
-      setCurrentPage(mostVisiblePage);
+
+      // Handle Ctrl+F for search
+      if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault(); // Prevent browser's default search
+        setShowSearch(true);
+        return;
+      }
+
+      switch (e.key) {
+        case "ArrowLeft":
+          if (currentPage > 1) setCurrentPage((p) => p - 1);
+          break;
+        case "ArrowRight":
+          if (currentPage < numPages) setCurrentPage((p) => p + 1);
+          break;
+        case "+":
+          handleZoomIn();
+          break;
+        case "-":
+          handleZoomOut();
+          break;
+        case "f":
+          toggleFullscreen();
+          break;
+        case "b":
+          addBookmark();
+          break;
+        case "o":
+          toggleSidebar("outline");
+          break;
+        case "c":
+          toggleViewMode("continuous");
+          break;
+        case "t":
+          toggleViewMode("twoPages");
+          break;
+      }
+    },
+    [
+      currentPage,
+      numPages,
+      handleZoomIn,
+      handleZoomOut,
+      toggleFullscreen,
+      addBookmark,
+      toggleSidebar,
+      toggleViewMode,
+    ]
+  );
+
+  // RENDER FUNCTIONS - These depend on other functions and should come last
+
+  // Render the PDF viewer based on view mode
+  const renderPDFViewer = useCallback(() => {
+    if (viewMode === "continuous") {
+      return (
+        <>
+          {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
+            <canvas
+              key={`page-${pageNum}`}
+              id={`pdf-canvas-page-${pageNum}`}
+              className={`pdf-canvas ${
+                pageNum === currentPage ? "current-page" : ""
+              }`}
+              style={{
+                marginBottom: pageNum < numPages ? "20px" : "0",
+                scrollMargin: "100px",
+                scrollSnapAlign: "start",
+              }}
+              data-page-number={pageNum}
+            />
+          ))}
+        </>
+      );
+    } else if (viewMode === "twoPages") {
+      // For two pages view, we need to show pairs of pages
+      // Always start from an odd page number (1, 3, 5, etc.)
+      const startPage = currentPage % 2 === 0 ? currentPage - 1 : currentPage;
+      const pages = [startPage];
+
+      if (startPage + 1 <= numPages) {
+        pages.push(startPage + 1);
+      }
+
+      return (
+        <div className="flex flex-wrap justify-center">
+          {pages.map((pageNum) => (
+            <canvas
+              key={`page-${pageNum}`}
+              id={`pdf-canvas-page-${pageNum}`}
+              className={`pdf-canvas ${
+                pageNum === currentPage ? "current-page" : ""
+              }`}
+              style={{ margin: "10px" }}
+              data-page-number={pageNum}
+            />
+          ))}
+        </div>
+      );
     }
-    
-    // Load more pages when scrolling near the bottom
-    if (scrollTop + clientHeight > scrollHeight - 500) {
-      // Logic to load more pages if implementing lazy loading
+
+    // Fallback
+    return <canvas ref={canvasRef} className="pdf-canvas" />;
+  }, [currentPage, numPages, viewMode]);
+
+  // Render sidebar content
+  const renderSidebarContent = useCallback(() => {
+    if (sidebarTab === "outline") {
+      return (
+        <PDFOutlineView
+          outline={outline}
+          currentPage={currentPage}
+          onItemClick={handleOutlineItemClick}
+        />
+      );
+    } else if (sidebarTab === "bookmarks") {
+      return (
+        <>
+          <h3>Bookmarks</h3>
+          {bookmarks.length > 0 ? (
+            <ul className="pdf-bookmarks-list">
+              {bookmarks.map((bookmark, index) => (
+                <li key={index} className="pdf-bookmark-item">
+                  <button onClick={() => handleBookmarkClick(bookmark)}>
+                    {bookmark.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div>
+              <p className="text-gray-400 text-sm mb-4">
+                No bookmarks yet. Add bookmarks to pages for quick access.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={addBookmark}
+                className="w-full"
+              >
+                <Bookmark className="h-4 w-4 mr-2" />
+                Bookmark Current Page
+              </Button>
+            </div>
+          )}
+        </>
+      );
+    } else if (sidebarTab === "thumbnails") {
+      return (
+        <>
+          <h3>Page Thumbnails</h3>
+          <div className="pdf-thumbnail-grid">
+            {Array.from({ length: numPages }, (_, i) => i + 1).map(
+              (pageNum) => (
+                <div
+                  key={`thumb-${pageNum}`}
+                  className={`pdf-thumbnail-item ${
+                    pageNum === currentPage ? "current" : ""
+                  }`}
+                  onClick={() => setCurrentPage(pageNum)}
+                >
+                  <div
+                    className="pdf-thumbnail"
+                    ref={(el) => {
+                      if (el && !thumbnailsRendered.includes(pageNum)) {
+                        renderThumbnail(pageNum, el);
+                      }
+                    }}
+                  ></div>
+                  <div className="text-center">Page {pageNum}</div>
+                </div>
+              )
+            )}
+          </div>
+        </>
+      );
     }
-  }, [viewMode, currentPage]);
+
+    return null;
+  }, [
+    sidebarTab,
+    outline,
+    bookmarks,
+    thumbnails,
+    currentPage,
+    handleOutlineItemClick,
+    handleBookmarkClick,
+    addBookmark,
+    numPages,
+    renderThumbnail,
+    thumbnailsRendered
+  ]);
+
+  // Function to render thumbnails
+  const renderThumbnail = useCallback(
+    async (pageNum: number, container: HTMLElement) => {
+      if (!pdfDocRef.current) return;
+
+      try {
+        // Get the page
+        const page = await pdfDocRef.current.getPage(pageNum);
+
+        // Create a small viewport for the thumbnail
+        const viewport = page.getViewport({ scale: 0.2, rotation: 0 });
+
+        // Create a canvas for this thumbnail
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          console.error("Failed to get canvas context for thumbnail");
+          return;
+        }
+
+        // Set canvas dimensions
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        // Render page to canvas
+        await page.render({
+          canvasContext: context,
+          viewport: viewport,
+        }).promise;
+
+        // Clear the container and append the canvas
+        while (container.firstChild) {
+          container.removeChild(container.firstChild);
+        }
+        container.appendChild(canvas);
+
+        // Mark this thumbnail as rendered
+        setThumbnailsRendered((prev) => [...prev, pageNum]);
+      } catch (err) {
+        console.error(`Error rendering thumbnail for page ${pageNum}:`, err);
+      }
+    },
+    [pdfDocRef]
+  );
 
   // Clean up function to prevent memory leaks
   const cleanupPdf = useCallback(() => {
@@ -279,23 +1227,109 @@ export const SimplePDFViewer = ({
         try {
           const outline = await pdf.getOutline();
           if (outline && outline.length > 0) {
-            // Process outline items to ensure they have valid page references
-            const processedOutline = outline.map((item: any) => {
-              // Ensure dest is properly formatted for navigation
-              if (
-                item.dest &&
-                Array.isArray(item.dest) &&
-                typeof item.dest[0] === "object"
-              ) {
-                // If dest[0] is an object (reference), we need to resolve the page number
-                return {
-                  ...item,
-                  dest: [1], // Default to page 1 if we can't resolve
-                };
+            console.log("PDF outline loaded:", outline);
+
+            // Process outline items recursively to ensure they have valid page references
+            const processOutlineItems = async (items: any[], level = 0) => {
+              const processedItems = [];
+
+              for (const item of items) {
+                // Add level information for indentation
+                const processedItem = { ...item, level };
+
+                // Process destination
+                if (item.dest) {
+                  try {
+                    if (typeof item.dest === "string") {
+                      // Named destination - try to resolve it to get the page number
+                      try {
+                        const destArray = await pdf.getDestination(item.dest);
+                        if (destArray && destArray.length > 0 && destArray[0]) {
+                          const pageIndex = await pdf.getPageIndex(
+                            destArray[0]
+                          );
+                          processedItem.pageNumber = pageIndex + 1;
+                          console.log(
+                            `Resolved named destination "${item.dest}" to page ${processedItem.pageNumber}`
+                          );
+                        }
+                      } catch (err) {
+                        console.warn(
+                          `Could not resolve named destination "${item.dest}":`,
+                          err
+                        );
+                      }
+                    } else if (
+                      Array.isArray(item.dest) &&
+                      item.dest.length > 0
+                    ) {
+                      // Try to get page number from the destination array
+                      try {
+                        if (item.dest[0]) {
+                          const pageIndex = await pdf.getPageIndex(
+                            item.dest[0]
+                          );
+                          processedItem.pageNumber = pageIndex + 1;
+                          console.log(
+                            `Resolved array destination to page ${processedItem.pageNumber}`
+                          );
+                        }
+                      } catch (err) {
+                        console.warn(
+                          "Could not resolve array destination:",
+                          err
+                        );
+
+                        // Check if dest[0] is a reference object that might cause issues
+                        if (
+                          typeof item.dest[0] === "object" &&
+                          !(item.dest[0] instanceof Uint8Array)
+                        ) {
+                          console.warn(
+                            "Found object reference in destination, trying alternative methods"
+                          );
+
+                          // Try to extract page number from the destination array if possible
+                          if (
+                            item.dest.length > 1 &&
+                            typeof item.dest[1] === "number"
+                          ) {
+                            processedItem.pageNumber = item.dest[1];
+                            console.log(
+                              `Using page number ${processedItem.pageNumber} from destination array`
+                            );
+                          }
+                        }
+                      }
+                    }
+                  } catch (err) {
+                    console.error("Error processing destination:", err);
+                  }
+
+                  // If we still don't have a page number, keep the original destination
+                  // for later resolution when clicked
+                }
+
+                // Process any child items recursively
+                if (item.items && item.items.length > 0) {
+                  processedItem.items = await processOutlineItems(
+                    item.items,
+                    level + 1
+                  );
+                }
+
+                processedItems.push(processedItem);
               }
-              return item;
-            });
+
+              return processedItems;
+            };
+
+            const processedOutline = await processOutlineItems(outline);
+            console.log("Processed outline:", processedOutline);
             setOutline(processedOutline);
+          } else {
+            console.log("No outline available in this PDF");
+            setOutline([]);
           }
         } catch (err) {
           console.error("Error loading outline:", err);
@@ -368,23 +1402,6 @@ export const SimplePDFViewer = ({
     };
   }, [url, cleanupPdf, onTotalPagesChange]);
 
-  // Calculate appropriate scale based on container width
-  const calculateScale = useCallback(() => {
-    if (!containerRef.current || !pdfDocRef.current) return scale;
-
-    const containerWidth =
-      containerRef.current.clientWidth - (showSidebar ? 250 : 0);
-    // Use a fixed width for consistency (85% of container width)
-    const targetWidth = containerWidth * 0.85;
-
-    // For two pages view, divide the width by 2 to fit two pages side by side
-    if (viewMode === "twoPages") {
-      return targetWidth / 2 / 595; // 595 is a standard PDF width in points
-    }
-
-    return targetWidth / 595; // 595 is a standard PDF width in points
-  }, [scale, showSidebar, viewMode]);
-
   // Determine which pages to render based on view mode
   useEffect(() => {
     if (!numPages) return;
@@ -399,6 +1416,7 @@ export const SimplePDFViewer = ({
         // Start from an even page number (or page 1)
         const startPage = currentPage % 2 === 0 ? currentPage - 1 : currentPage;
         pagesToRender = [startPage];
+
         if (startPage + 1 <= numPages) {
           pagesToRender.push(startPage + 1);
         }
@@ -542,110 +1560,56 @@ export const SimplePDFViewer = ({
   ]);
 
   // Navigation functions for different view modes
-  const goToPreviousPage = useCallback(() => {
-    if (currentPage <= 1) return;
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (!viewerRef.current || !pdfDocRef.current || viewMode !== "continuous")
+        return;
 
-    if (viewMode === "twoPages") {
-      // In two pages mode, go back by 2 pages
-      setCurrentPage(Math.max(1, currentPage - 2));
-    } else {
-      setCurrentPage(currentPage - 1);
-    }
-  }, [currentPage, viewMode]);
+      const container = e.currentTarget;
+      const scrollTop = container.scrollTop;
+      const clientHeight = container.clientHeight;
+      const scrollHeight = container.scrollHeight;
 
-  const goToNextPage = useCallback(() => {
-    if (currentPage >= numPages) return;
+      // Determine which page is most visible in the viewport
+      const pageElements = container.querySelectorAll(".pdf-page");
+      if (pageElements.length === 0) return;
 
-    if (viewMode === "twoPages") {
-      // In two pages mode, go forward by 2 pages
-      setCurrentPage(Math.min(numPages, currentPage + 2));
-    } else {
-      setCurrentPage(currentPage + 1);
-    }
-  }, [currentPage, numPages, viewMode]);
+      let mostVisiblePage = 1;
+      let maxVisibility = 0;
 
-  // View mode functions - simplified
-  const toggleViewMode = useCallback((mode: ViewMode) => {
-    // If we're already in this mode, do nothing
-    if (viewMode === mode) return;
+      pageElements.forEach((pageEl) => {
+        const rect = pageEl.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
 
-    // Clear any previous errors
-    setError(null);
+        // Calculate how much of the page is visible
+        const visibleTop = Math.max(rect.top, containerRect.top);
+        const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
+        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
 
-    // Set loading state to true during transition
-    setLoading(true);
+        // Get page number from data attribute
+        const pageNumber = parseInt(
+          pageEl.getAttribute("data-page-number") || "1",
+          10
+        );
 
-    // First clear any rendered pages to avoid stale canvas references
-    setRenderedPages([]);
-    canvasesRef.current.clear();
-
-    // Change the view mode after a small delay to ensure clean state
-    setTimeout(() => {
-      // Change the view mode
-      setViewMode(mode);
-
-      if (mode === "presentation") {
-        toggleFullscreen();
-      }
-
-      // For two pages view, ensure we start on an odd page
-      if (mode === "twoPages" && currentPage % 2 === 0) {
-        setCurrentPage(currentPage - 1);
-      }
-
-      // Set loading back to false after a delay to allow rendering to complete
-      setTimeout(() => {
-        setLoading(false);
-      }, 500);
-    }, 100);
-  }, [viewMode, currentPage]);
-
-  // Sidebar functions
-  const toggleSidebar = useCallback((tab: SidebarTab) => {
-    if (showSidebar && sidebarTab === tab) {
-      setShowSidebar(false);
-    } else {
-      setShowSidebar(true);
-      setSidebarTab(tab);
-    }
-  }, [showSidebar, sidebarTab]);
-
-  // Zoom functions
-  const handleZoomIn = useCallback(() => {
-    setFitToWidth(false);
-    setScale((prevScale) => Math.min(prevScale + 0.2, 3.0));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    setFitToWidth(false);
-    setScale((prevScale) => Math.max(prevScale - 0.2, 0.5));
-  }, []);
-
-  const handleRotate = useCallback(() => {
-    setRotation((prevRotation) => (prevRotation + 90) % 360);
-  }, []);
-
-  const toggleFitToWidth = useCallback(() => {
-    setFitToWidth((prev) => !prev);
-    if (!fitToWidth) {
-      const newScale = calculateScale();
-      if (newScale) {
-        setScale(newScale);
-      }
-    }
-  }, [fitToWidth, calculateScale]);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!viewerRef.current) return;
-
-    if (!document.fullscreenElement) {
-      viewerRef.current.requestFullscreen().catch((err) => {
-        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+        if (visibleHeight > maxVisibility) {
+          maxVisibility = visibleHeight;
+          mostVisiblePage = pageNumber;
+        }
       });
-    } else {
-      document.exitFullscreen();
-    }
-  }, []);
+
+      // Update current page if it changed
+      if (mostVisiblePage !== currentPage) {
+        setCurrentPage(mostVisiblePage);
+      }
+
+      // Load more pages when scrolling near the bottom
+      if (scrollTop + clientHeight > scrollHeight - 500) {
+        // Logic to load more pages if implementing lazy loading
+      }
+    },
+    [viewMode, currentPage]
+  );
 
   // Add intersection observer for continuous mode
   useEffect(() => {
@@ -709,246 +1673,7 @@ export const SimplePDFViewer = ({
     }
   }, [currentPage, viewMode]);
 
-  // Render sidebar content
-  const renderSidebarContent = useCallback(() => {
-    if (sidebarTab === "outline") {
-      return (
-        <>
-          <h3>Document Outline</h3>
-          {outline.length > 0 ? (
-            <ul className="pdf-outline-list">
-              {outline.map((item, index) => (
-                <li key={index} className="pdf-outline-item">
-                  <button
-                    onClick={() => handleOutlineItemClick(item)}
-                    style={{
-                      paddingLeft: `${item.level * 12}px`,
-                    }}
-                  >
-                    {item.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-gray-400 text-sm">
-              No outline available for this document.
-            </p>
-          )}
-        </>
-      );
-    } else if (sidebarTab === "bookmarks") {
-      return (
-        <>
-          <h3>Bookmarks</h3>
-          {bookmarks.length > 0 ? (
-            <ul className="pdf-bookmarks-list">
-              {bookmarks.map((bookmark, index) => (
-                <li key={index} className="pdf-bookmark-item">
-                  <button
-                    onClick={() => handleBookmarkClick(bookmark)}
-                  >
-                    {bookmark.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div>
-              <p className="text-gray-400 text-sm mb-4">
-                No bookmarks yet. Add bookmarks to pages for quick
-                access.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  addBookmark({
-                    page: currentPage,
-                    title: `Page ${currentPage}`,
-                  })
-                }
-                className="w-full"
-              >
-                <Bookmark className="h-4 w-4 mr-2" />
-                Bookmark Current Page
-              </Button>
-            </div>
-          )}
-        </>
-      );
-    } else if (sidebarTab === "thumbnails") {
-      return (
-        <>
-          <h3>Page Thumbnails</h3>
-          <div className="pdf-thumbnail-grid">
-            {Array.from({ length: numPages }, (_, i) => i + 1).map(
-              (pageNum) => (
-                <div
-                  key={`thumb-${pageNum}`}
-                  className={`pdf-thumbnail-item ${
-                    pageNum === currentPage ? "current" : ""
-                  }`}
-                  onClick={() => setCurrentPage(pageNum)}
-                >
-                  <div
-                    className="pdf-thumbnail"
-                    ref={(el) => {
-                      if (el && !thumbnailsRendered.includes(pageNum)) {
-                        renderThumbnail(pageNum, el);
-                      }
-                    }}
-                  ></div>
-                  <div className="text-center">Page {pageNum}</div>
-                </div>
-              )
-            )}
-          </div>
-        </>
-      );
-    }
-
-    return null;
-  }, [sidebarTab, outline, bookmarks, thumbnails, currentPage]);
-
-  const handleOutlineItemClick = useCallback(async (item: any) => {
-    if (!pdfDocRef.current) return;
-
-    try {
-      let pageNumber = 1; // Default to first page
-
-      if (item.dest) {
-        // Handle different types of destinations
-        if (typeof item.dest === "string") {
-          // Named destination - needs to be resolved
-          const dest = await pdfDocRef.current.getDestination(item.dest);
-          if (dest && dest.length > 0 && typeof dest[0] === "object") {
-            const ref = dest[0];
-            // Get page number from reference
-            pageNumber = (await pdfDocRef.current.getPageIndex(ref)) + 1;
-          }
-        } else if (Array.isArray(item.dest)) {
-          // Direct destination array
-          if (typeof item.dest[0] === "object") {
-            // Reference to page object
-            try {
-              pageNumber =
-                (await pdfDocRef.current.getPageIndex(item.dest[0])) + 1;
-            } catch (err) {
-              console.error("Error resolving page reference:", err);
-            }
-          } else if (typeof item.dest[0] === "number") {
-            // Direct page number (1-based)
-            pageNumber = item.dest[0];
-          }
-        }
-      } else if (item.pageNumber) {
-        // Some outlines might have direct pageNumber property
-        pageNumber = item.pageNumber;
-      }
-
-      // Ensure valid page number
-      if (pageNumber < 1) pageNumber = 1;
-      if (pageNumber > numPages) pageNumber = numPages;
-
-      setCurrentPage(pageNumber);
-    } catch (err) {
-      console.error("Error navigating to outline item:", err);
-    }
-  }, [pdfDocRef, numPages]);
-
-  // Bookmark functions
-  const addBookmark = useCallback((customBookmark?: { page: number; title: string }) => {
-    const newBookmark: BookmarkItem = {
-      id: `bookmark-${Date.now()}`,
-      page: customBookmark?.page || currentPage,
-      title: customBookmark?.title || `Page ${currentPage}`,
-      timestamp: Date.now(),
-    };
-
-    const updatedBookmarks = [...bookmarks, newBookmark];
-    setBookmarks(updatedBookmarks);
-
-    // Save to localStorage
-    try {
-      localStorage.setItem(
-        `bookmarks-${url}`,
-        JSON.stringify(updatedBookmarks)
-      );
-    } catch (err) {
-      console.error("Error saving bookmark:", err);
-    }
-  }, [bookmarks, currentPage, url]);
-
-  const removeBookmark = useCallback((id: string) => {
-    const updatedBookmarks = bookmarks.filter((b) => b.id !== id);
-    setBookmarks(updatedBookmarks);
-
-    // Save to localStorage
-    try {
-      localStorage.setItem(
-        `bookmarks-${url}`,
-        JSON.stringify(updatedBookmarks)
-      );
-    } catch (err) {
-      console.error("Error removing bookmark:", err);
-    }
-  }, [bookmarks, url]);
-
-  // Function to render thumbnails
-  const renderThumbnail = useCallback(async (pageNum: number, container: HTMLElement) => {
-    if (!pdfDocRef.current) return;
-    
-    try {
-      // Get the page
-      const page = await pdfDocRef.current.getPage(pageNum);
-      
-      // Create a small viewport for the thumbnail
-      const viewport = page.getViewport({ scale: 0.2, rotation: 0 });
-      
-      // Create a canvas for this thumbnail
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      
-      if (!context) {
-        console.error('Failed to get canvas context for thumbnail');
-        return;
-      }
-      
-      // Set canvas dimensions
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      
-      // Render page to canvas
-      await page.render({
-        canvasContext: context,
-        viewport: viewport,
-      }).promise;
-      
-      // Clear the container and append the canvas
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
-      container.appendChild(canvas);
-      
-      // Mark this thumbnail as rendered
-      setThumbnailsRendered(prev => [...prev, pageNum]);
-      
-    } catch (err) {
-      console.error(`Error rendering thumbnail for page ${pageNum}:`, err);
-    }
-  }, [pdfDocRef]);
-
   // Recalculate scale on window resize
-  const handleResize = useCallback(() => {
-    if (fitToWidth) {
-      const newScale = calculateScale();
-      if (newScale) {
-        setScale(newScale);
-      }
-    }
-  }, [calculateScale, fitToWidth]);
-
   useEffect(() => {
     window.addEventListener("resize", handleResize);
     // Initial calculation
@@ -960,10 +1685,6 @@ export const SimplePDFViewer = ({
   }, [handleResize]);
 
   // Handle fullscreen mode
-  const handleFullscreenChange = useCallback(() => {
-    setIsFullscreen(!!document.fullscreenElement);
-  }, []);
-
   useEffect(() => {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
@@ -973,53 +1694,6 @@ export const SimplePDFViewer = ({
   }, [handleFullscreenChange]);
 
   // Handle keyboard shortcuts
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Prevent handling if inside an input field
-    if (
-      e.target instanceof HTMLInputElement ||
-      e.target instanceof HTMLTextAreaElement
-    ) {
-      return;
-    }
-
-    // Handle Ctrl+F for search
-    if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault(); // Prevent browser's default search
-      setShowSearch(true);
-      return;
-    }
-
-    switch (e.key) {
-      case "ArrowLeft":
-        if (currentPage > 1) setCurrentPage((p) => p - 1);
-        break;
-      case "ArrowRight":
-        if (currentPage < numPages) setCurrentPage((p) => p + 1);
-        break;
-      case "+":
-        handleZoomIn();
-        break;
-      case "-":
-        handleZoomOut();
-        break;
-      case "f":
-        toggleFullscreen();
-        break;
-      case "b":
-        addBookmark();
-        break;
-      case "o":
-        toggleSidebar("outline");
-        break;
-      case "c":
-        toggleViewMode("continuous");
-        break;
-      case "t":
-        toggleViewMode("twoPages");
-        break;
-    }
-  }, [currentPage, numPages, handleZoomIn, handleZoomOut, toggleFullscreen, addBookmark, toggleSidebar, toggleViewMode]);
-
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
 
@@ -1027,516 +1701,6 @@ export const SimplePDFViewer = ({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleKeyDown]);
-
-  // Function to get context around a match
-  const getTextContext = useCallback(
-    (
-      text: string,
-      matchIndex: number,
-      matchLength: number,
-      contextSize: number = 20
-    ) => {
-      const startContext = Math.max(0, matchIndex - contextSize);
-      const endContext = Math.min(
-        text.length,
-        matchIndex + matchLength + contextSize
-      );
-
-      return {
-        contextBefore: text.substring(startContext, matchIndex),
-        contextAfter: text.substring(matchIndex + matchLength, endContext),
-      };
-    },
-    []
-  );
-
-  // Handle search functionality - completely rewritten for better performance and highlighting
-  const handleSearch = useCallback(async () => {
-    if (!searchText || !pdfDocRef.current) return;
-
-    try {
-      setIsSearching(true);
-      setSearchResults([]);
-      setDetailedSearchResults([]);
-      setSearchHighlights(new Map());
-
-      const results: any[] = [];
-      const detailedResults: any[] = [];
-      const highlights = new Map();
-      let totalMatchCount = 0;
-
-      // Case insensitive search
-      const searchTermLower = searchText.toLowerCase().trim();
-
-      if (searchTermLower.length === 0) {
-        setIsSearching(false);
-        return;
-      }
-
-      // Show a loading indicator in the search bar
-      const searchStatusElement = document.getElementById("search-status");
-      if (searchStatusElement) {
-        searchStatusElement.textContent = "Searching...";
-      }
-
-      for (let i = 1; i <= numPages; i++) {
-        try {
-          // Get the page
-          const page = await pdfDocRef.current.getPage(i);
-
-          // Get text content with item positions
-          const textContent = await page.getTextContent();
-          const viewport = page.getViewport({ scale: 1.0 }); // Use scale 1.0 for position calculations
-
-          // Process text content for this page
-          let pageHasMatches = false;
-          const pageMatches: any[] = [];
-
-          // Process each text item to find matches
-          textContent.items.forEach((item: any) => {
-            if (!item.str) return; // Skip items without text
-
-            const itemText = item.str;
-            const itemTextLower = itemText.toLowerCase();
-
-            // Find all occurrences of the search term in this text item
-            let startIndex = 0;
-            while (true) {
-              const matchIndex = itemTextLower.indexOf(
-                searchTermLower,
-                startIndex
-              );
-              if (matchIndex === -1) break;
-
-              pageHasMatches = true;
-              totalMatchCount++;
-
-              // Calculate position for highlighting
-              // Use the transform matrix from the text item for accurate positioning
-              const [scaleX, skewX, skewY, scaleY, transX, transY] =
-                item.transform;
-
-              // Calculate position based on the text's transform and the match position
-              const position = {
-                left: transX + matchIndex * scaleX,
-                top: transY - scaleY, // Adjust for PDF coordinate system
-                width: searchTermLower.length * scaleX,
-                height: Math.abs(scaleY) * 1.2, // Slightly taller than the text
-              };
-
-              // Get context around the match
-              const { contextBefore, contextAfter } = getTextContext(
-                itemText,
-                matchIndex,
-                searchTermLower.length
-              );
-
-              // Add match to page matches
-              pageMatches.push({
-                text: itemText.substring(
-                  matchIndex,
-                  matchIndex + searchTermLower.length
-                ),
-                position: position,
-                originalText: itemText,
-                contextBefore,
-                contextAfter,
-              });
-
-              // Move to next potential match
-              startIndex = matchIndex + searchTermLower.length;
-            }
-          });
-
-          // If we found matches on this page, add to results
-          if (pageHasMatches) {
-            // Join all text items for the basic result
-            const pageText = textContent.items
-              .map((item: any) => item.str)
-              .join(" ");
-
-            // Basic result for navigation
-            results.push({
-              page: i,
-              text: pageText,
-              matchCount: pageMatches.length,
-            });
-
-            // Add detailed result
-            detailedResults.push({
-              page: i,
-              text: pageText,
-              matches: pageMatches,
-            });
-
-            // Store highlights for this page
-            highlights.set(i, pageMatches);
-
-            // Update search status
-            if (searchStatusElement) {
-              searchStatusElement.textContent = `Found ${totalMatchCount} matches on ${results.length} pages...`;
-            }
-          }
-        } catch (err) {
-          console.error(`Error searching page ${i}:`, err);
-        }
-      }
-
-      // Update state with search results
-      setSearchResults(results);
-      setDetailedSearchResults(detailedResults);
-      setSearchHighlights(highlights);
-
-      // Show search panel if we have results
-      if (results.length > 0) {
-        setShowSearchPanel(true);
-        setShowSearchResults(true);
-      }
-
-      // Navigate to first result if found
-      if (results.length > 0) {
-        setCurrentSearchIndex(0);
-        setCurrentPage(results[0].page);
-
-        // Update search status
-        if (searchStatusElement) {
-          searchStatusElement.textContent = `Found ${totalMatchCount} matches on ${results.length} pages`;
-        }
-      } else {
-        setCurrentSearchIndex(-1);
-
-        // Update search status
-        if (searchStatusElement) {
-          searchStatusElement.textContent = "No matches found";
-        }
-      }
-    } catch (err) {
-      console.error("Error searching PDF:", err);
-
-      // Update search status
-      const searchStatusElement = document.getElementById("search-status");
-      if (searchStatusElement) {
-        searchStatusElement.textContent = "Search error";
-      }
-    } finally {
-      setIsSearching(false);
-    }
-  }, [searchText, pdfDocRef, numPages]);
-
-  // Handle search result click - completely rewritten for reliability
-  const handleSearchResultClick = useCallback((index: number, page: number) => {
-    console.log(
-      `SimplePDFViewer: Handling search result click: index ${index}, page ${page}`
-    );
-
-    // Update the current search index
-    setCurrentSearchIndex(index);
-    
-    // Force a complete re-render by setting loading to true
-    setLoading(true);
-    
-    // Use a timeout to ensure the loading state is applied
-    setTimeout(() => {
-      // Change the page
-      setCurrentPage(page);
-      
-      // After a short delay, finish loading and scroll to the page
-      setTimeout(() => {
-        setLoading(false);
-        
-        // After rendering is complete, scroll to the page
-        setTimeout(() => {
-          try {
-            // Try multiple approaches to find and scroll to the page
-            
-            // Approach 1: Direct ID selector
-            const pageElement = document.getElementById(`pdf-canvas-page-${page}`);
-            if (pageElement) {
-              console.log(`SimplePDFViewer: Found page element by ID, scrolling to page ${page}`);
-              pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
-              return;
-            }
-            
-            // Approach 2: Data attribute selector
-            const pageByData = document.querySelector(`[data-page-number="${page}"]`);
-            if (pageByData) {
-              console.log(`SimplePDFViewer: Found page element by data attribute, scrolling to page ${page}`);
-              pageByData.scrollIntoView({ behavior: "smooth", block: "start" });
-              return;
-            }
-            
-            // Approach 3: Force scroll using container
-            const container = containerRef.current;
-            if (container) {
-              console.log(`SimplePDFViewer: Using container scroll method for page ${page}`);
-              
-              // Find all canvas elements
-              const canvases = container.querySelectorAll('canvas');
-              console.log(`SimplePDFViewer: Found ${canvases.length} canvas elements`);
-              
-              // Try to find the canvas for this page
-              for (let i = 0; i < canvases.length; i++) {
-                const canvas = canvases[i];
-                if (canvas.id.includes(`${page}`) || 
-                    canvas.getAttribute('data-page-number') === `${page}`) {
-                  console.log(`SimplePDFViewer: Found canvas for page ${page}, scrolling to it`);
-                  canvas.scrollIntoView({ behavior: "smooth", block: "start" });
-                  return;
-                }
-              }
-              
-              // If we're in continuous mode, try to estimate the scroll position
-              if (viewMode === "continuous" && numPages > 0) {
-                console.log(`SimplePDFViewer: Using estimated scroll position for page ${page}`);
-                const scrollHeight = container.scrollHeight;
-                const estimatedPosition = (scrollHeight / numPages) * (page - 1);
-                container.scrollTo({
-                  top: estimatedPosition,
-                  behavior: "smooth"
-                });
-                return;
-              }
-            }
-            
-            console.warn(`SimplePDFViewer: Could not find any element for page ${page}`);
-          } catch (err) {
-            console.error("Error scrolling to page:", err);
-          }
-        }, 300); // Wait for DOM to update after loading state changes
-      }, 200); // Wait for page change to be processed
-    }, 100); // Wait for loading state to be applied
-  }, [viewMode, numPages]);
-
-  // Clear search - accidentally removed in previous edit
-  const clearSearch = useCallback(() => {
-    setShowSearch(false);
-    setShowSearchPanel(false);
-    setShowSearchResults(false);
-    setSearchText("");
-    setSearchResults([]);
-    setDetailedSearchResults([]);
-    setSearchHighlights(new Map());
-    setCurrentSearchIndex(-1);
-  }, []);
-
-  // Navigation functions for search results - updated for reliability
-  const navigateToNextSearchResult = useCallback(() => {
-    if (searchResults.length === 0 || currentSearchIndex === -1) return;
-
-    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
-    const targetPage = searchResults[nextIndex].page;
-    console.log(
-      `Navigating to next result: index ${nextIndex}, page ${targetPage}`
-    );
-
-    // Use our improved handleSearchResultClick function
-    handleSearchResultClick(nextIndex, targetPage);
-  }, [searchResults, currentSearchIndex]);
-
-  const navigateToPrevSearchResult = useCallback(() => {
-    if (searchResults.length === 0 || currentSearchIndex === -1) return;
-
-    const prevIndex =
-      (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
-    const targetPage = searchResults[prevIndex].page;
-    console.log(
-      `Navigating to previous result: index ${prevIndex}, page ${targetPage}`
-    );
-
-    // Use our improved handleSearchResultClick function
-    handleSearchResultClick(prevIndex, targetPage);
-  }, [searchResults, currentSearchIndex]);
-
-  // Function to navigate to a specific search result - updated for reliability
-  const navigateToSearchResult = useCallback(
-    (resultIndex: number, matchIndex: number = 0) => {
-      if (resultIndex < 0 || resultIndex >= searchResults.length) return;
-
-      try {
-        // Get the target page
-        const targetPage = searchResults[resultIndex].page;
-        console.log(
-          `navigateToSearchResult: Navigating to index ${resultIndex}, page ${targetPage}`
-        );
-
-        // Use our improved handleSearchResultClick function
-        handleSearchResultClick(resultIndex, targetPage);
-      } catch (err) {
-        console.error("Error navigating to search result:", err);
-      }
-    },
-    [searchResults]
-  );
-
-  // Aliases for search navigation functions for better naming consistency in UI
-  const goToPreviousSearchResult = useCallback(() => {
-    navigateToPrevSearchResult();
-  }, [navigateToPrevSearchResult]);
-
-  const goToNextSearchResult = useCallback(() => {
-    navigateToNextSearchResult();
-  }, [navigateToNextSearchResult]);
-
-  // Function to render search highlights
-  const renderSearchHighlights = useCallback(() => {
-    if (
-      !searchHighlights.has(currentPage) ||
-      searchHighlights.get(currentPage).length === 0
-    ) {
-      return null;
-    }
-
-    // Get highlights for current page
-    const highlights = searchHighlights.get(currentPage);
-
-    // Calculate scale factor based on current scale
-    let scaleFactor = scale;
-    if (fitToWidth) {
-      scaleFactor = calculateScale() || scale;
-    }
-
-    // Get the canvas element for positioning
-    const canvas = document.getElementById(
-      `pdf-canvas-page-${currentPage}`
-    ) as HTMLCanvasElement;
-    if (!canvas) return null;
-
-    // Get canvas position
-    const canvasRect = canvas.getBoundingClientRect();
-    const containerRect = containerRef.current?.getBoundingClientRect();
-
-    if (!containerRect) return null;
-
-    // Calculate offset relative to container
-    const offsetLeft = canvasRect.left - containerRect.left;
-    const offsetTop = canvasRect.top - containerRect.top;
-
-    // Find the current highlight (if we're on the current search result page)
-    const isCurrentResultPage =
-      currentSearchIndex !== -1 &&
-      searchResults[currentSearchIndex]?.page === currentPage;
-
-    return (
-      <div
-        className="search-highlights-container"
-        key={`highlights-container-${currentPage}-${scale}-${rotation}`}
-        style={{
-          position: "absolute",
-          top: offsetTop + "px",
-          left: offsetLeft + "px",
-          width: canvas.width + "px",
-          height: canvas.height + "px",
-          pointerEvents: "none", // Ensure highlights don't interfere with clicks
-        }}
-      >
-        {highlights.map((highlight, index) => (
-          <div
-            key={`highlight-${currentPage}-${index}-${scale}-${rotation}`}
-            className={`search-highlight ${
-              isCurrentResultPage ? "current" : ""
-            }`}
-            style={{
-              left: highlight.position.left * scaleFactor + "px",
-              top: highlight.position.top * scaleFactor + "px",
-              width: highlight.position.width * scaleFactor + "px",
-              height: highlight.position.height * scaleFactor + "px",
-              pointerEvents: "none", // Ensure highlights don't interfere with clicks
-            }}
-            title={`${highlight.contextBefore}${highlight.text}${highlight.contextAfter}`}
-          />
-        ))}
-      </div>
-    );
-  }, [currentPage, searchHighlights, scale, fitToWidth, rotation]);
-
-  // Clear search when changing view mode
-  useEffect(() => {
-    // Clear search results when changing view mode
-    setSearchText("");
-    setSearchResults([]);
-    setDetailedSearchResults([]);
-    setSearchHighlights(new Map());
-    setCurrentSearchIndex(-1);
-    setShowSearchPanel(false);
-    setShowSearchResults(false);
-  }, [viewMode]);
-
-  // Update search highlights when page or scale changes
-  useEffect(() => {
-    // We'll use React's key prop to force re-render instead of direct DOM manipulation
-
-    // If we have search results and we're on a page with highlights, make sure they're visible
-    if (searchHighlights.has(currentPage) && currentSearchIndex !== -1) {
-      // If the current search result is on a different page, update the search index
-      // to the first result on the current page
-      const currentResultPage = searchResults[currentSearchIndex]?.page;
-
-      if (currentResultPage !== currentPage) {
-        // Find the first search result on the current page
-        const resultOnCurrentPage = searchResults.findIndex(
-          (result) => result.page === currentPage
-        );
-
-        if (resultOnCurrentPage !== -1) {
-          // Update the search index to the first result on the current page
-          setCurrentSearchIndex(resultOnCurrentPage);
-        }
-      }
-    }
-  }, [currentPage, searchHighlights, searchResults, currentSearchIndex]);
-
-  // Render the PDF viewer based on view mode
-  const renderPDFViewer = useCallback(() => {
-    if (viewMode === "continuous") {
-      return (
-        <>
-          {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-            <canvas
-              key={`page-${pageNum}`}
-              id={`pdf-canvas-page-${pageNum}`}
-              className={`pdf-canvas ${
-                pageNum === currentPage ? "current-page" : ""
-              }`}
-              style={{
-                marginBottom: pageNum < numPages ? "20px" : "0",
-                scrollMargin: "100px",
-                scrollSnapAlign: "start",
-              }}
-              data-page-number={pageNum}
-            />
-          ))}
-        </>
-      );
-    } else if (viewMode === "twoPages") {
-      // For two pages view, we need to show pairs of pages
-      // Always start from an odd page number (1, 3, 5, etc.)
-      const startPage = currentPage % 2 === 0 ? currentPage - 1 : currentPage;
-      const pages = [startPage];
-
-      if (startPage + 1 <= numPages) {
-        pages.push(startPage + 1);
-      }
-
-      return (
-        <div className="flex flex-wrap justify-center">
-          {pages.map((pageNum) => (
-            <canvas
-              key={`page-${pageNum}`}
-              id={`pdf-canvas-page-${pageNum}`}
-              className={`pdf-canvas ${
-                pageNum === currentPage ? "current-page" : ""
-              }`}
-              style={{ margin: "10px" }}
-              data-page-number={pageNum}
-            />
-          ))}
-        </div>
-      );
-    }
-
-    // Fallback
-    return <canvas ref={canvasRef} className="pdf-canvas" />;
-  }, [currentPage, numPages, viewMode]);
 
   if (loading) {
     return (
@@ -1844,7 +2008,7 @@ export const SimplePDFViewer = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={goToPreviousSearchResult}
+              onClick={navigateToPrevSearchResult}
               disabled={!searchResults.length || currentSearchIndex <= 0}
               title="Previous Result"
               className="font-medium"
@@ -1854,7 +2018,7 @@ export const SimplePDFViewer = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={goToNextSearchResult}
+              onClick={navigateToNextSearchResult}
               disabled={
                 !searchResults.length ||
                 currentSearchIndex >= searchResults.length - 1
@@ -1892,9 +2056,7 @@ export const SimplePDFViewer = ({
         {/* Sidebar */}
         {showSidebar && (
           <div className={`pdf-sidebar ${showSidebar ? "open" : ""}`}>
-            <div className="pdf-sidebar-content">
-              {renderSidebarContent()}
-            </div>
+            <div className="pdf-sidebar-content">{renderSidebarContent()}</div>
           </div>
         )}
 
@@ -1951,49 +2113,15 @@ export const SimplePDFViewer = ({
 
       {/* Search Results Panel */}
       {showSearchResults && searchResults.length > 0 && (
-        <div className="search-panel">
-          <div className="search-panel-header">
-            <h3>Search Results ({searchResults.length})</h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSearchResults(false)}
-              className="h-8 w-8 p-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="search-panel-content">
-            {searchResults.map((result, index) => (
-              <div
-                key={index}
-                className={`search-result-item ${
-                  index === currentSearchIndex ? "active" : ""
-                }`}
-                onClick={() => handleSearchResultClick(index, result.page)}
-              >
-                <div className="search-result-page">
-                  <span>Page {result.page}</span>
-                  <span>{result.matches} matches</span>
-                </div>
-                <p className="search-result-text">
-                  {result.text.substring(0, 100)}...
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="search-panel-footer">
-            <span>Total: {searchResults.length} matches</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearSearch}
-              className="h-6 px-2 text-xs"
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
+        <ImprovedSearchPanel
+          showPanel={showSearchResults}
+          searchResults={searchResults}
+          detailedResults={detailedSearchResults}
+          currentSearchIndex={currentSearchIndex}
+          onClose={() => setShowSearchResults(false)}
+          onClear={clearSearch}
+          onResultClick={handleSearchResultClick}
+        />
       )}
     </div>
   );

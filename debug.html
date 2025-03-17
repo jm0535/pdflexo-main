@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDFlexo Debug</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        background-color: #0f172a;
+        color: white;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background-color: #1e293b;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+      h1 {
+        color: #3b82f6;
+        margin-top: 0;
+      }
+      pre {
+        background-color: #334155;
+        padding: 15px;
+        border-radius: 4px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+      button {
+        background-color: #3b82f6;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 10px;
+        font-size: 14px;
+      }
+      button:hover {
+        background-color: #2563eb;
+      }
+      .error {
+        color: #ef4444;
+        font-weight: bold;
+      }
+      .success {
+        color: #10b981;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>PDFlexo Debug Page</h1>
+      <p>This page will help diagnose issues with the PDFlexo application.</p>
+
+      <h2>Environment Information</h2>
+      <pre id="env-info">Loading...</pre>
+
+      <h2>Module Loading Test</h2>
+      <pre id="module-test">Loading...</pre>
+
+      <h2>DOM Test</h2>
+      <pre id="dom-test">Loading...</pre>
+
+      <button id="test-btn">Run Tests</button>
+      <button id="clear-cache-btn">Clear Cache & Reload</button>
+    </div>
+
+    <script>
+      document.getElementById("env-info").textContent = `
+User Agent: ${navigator.userAgent}
+Platform: ${navigator.platform}
+Language: ${navigator.language}
+Cookies Enabled: ${navigator.cookieEnabled}
+Online: ${navigator.onLine}
+    `;
+
+      document.getElementById("test-btn").addEventListener("click", runTests);
+      document
+        .getElementById("clear-cache-btn")
+        .addEventListener("click", () => {
+          localStorage.clear();
+          sessionStorage.clear();
+          window.location.reload(true);
+        });
+
+      function runTests() {
+        // DOM Test
+        const domTest = document.getElementById("dom-test");
+        try {
+          const rootElement = document.getElementById("root");
+          domTest.innerHTML = rootElement
+            ? `<span class="success">Root element found ✓</span>`
+            : `<span class="error">Root element not found ✗</span>`;
+        } catch (error) {
+          domTest.innerHTML = `<span class="error">DOM Test Error: ${error.message}</span>`;
+        }
+
+        // Module Test
+        const moduleTest = document.getElementById("module-test");
+        try {
+          moduleTest.innerHTML = `<span class="success">Basic script execution works ✓</span>`;
+
+          // Try to dynamically import a module
+          import("./src/main.tsx")
+            .then(() => {
+              moduleTest.innerHTML += `<br><span class="success">Module import successful ✓</span>`;
+            })
+            .catch((error) => {
+              moduleTest.innerHTML += `<br><span class="error">Module import failed: ${error.message}</span>`;
+            });
+        } catch (error) {
+          moduleTest.innerHTML = `<span class="error">Module Test Error: ${error.message}</span>`;
+        }
+      }
+
+      // Run tests on load
+      window.addEventListener("load", runTests);
+    </script>
+  </body>
+</html>

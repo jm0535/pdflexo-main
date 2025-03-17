@@ -990,58 +990,51 @@ export const SimplePDFViewer = ({
 
   // RENDER FUNCTIONS - These depend on other functions and should come last
 
-  // Render the PDF viewer based on view mode
-  const renderPDFViewer = useCallback(() => {
-    if (viewMode === "continuous") {
-      return (
-        <>
-          {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-            <canvas
-              key={`page-${pageNum}`}
-              id={`pdf-canvas-page-${pageNum}`}
-              className={`pdf-canvas ${
-                pageNum === currentPage ? "current-page" : ""
-              }`}
-              style={{
-                marginBottom: pageNum < numPages ? "20px" : "0",
-                scrollMargin: "100px",
-                scrollSnapAlign: "start",
-              }}
-              data-page-number={pageNum}
-            />
-          ))}
-        </>
-      );
-    } else if (viewMode === "twoPages") {
-      // For two pages view, we need to show pairs of pages
-      // Always start from an odd page number (1, 3, 5, etc.)
-      const startPage = currentPage % 2 === 0 ? currentPage - 1 : currentPage;
-      const pages = [startPage];
+  // Function to render thumbnails
+  const renderThumbnail = useCallback(
+    async (pageNum: number, container: HTMLElement) => {
+      if (!pdfDocRef.current) return;
 
-      if (startPage + 1 <= numPages) {
-        pages.push(startPage + 1);
+      try {
+        // Get the page
+        const page = await pdfDocRef.current.getPage(pageNum);
+
+        // Create a small viewport for the thumbnail
+        const viewport = page.getViewport({ scale: 0.2, rotation: 0 });
+
+        // Create a canvas for this thumbnail
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          console.error("Failed to get canvas context for thumbnail");
+          return;
+        }
+
+        // Set canvas dimensions
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        // Render page to canvas
+        await page.render({
+          canvasContext: context,
+          viewport: viewport,
+        }).promise;
+
+        // Clear the container and append the canvas
+        while (container.firstChild) {
+          container.removeChild(container.firstChild);
+        }
+        container.appendChild(canvas);
+
+        // Mark this thumbnail as rendered
+        setThumbnailsRendered((prev) => [...prev, pageNum]);
+      } catch (err) {
+        console.error(`Error rendering thumbnail for page ${pageNum}:`, err);
       }
-
-      return (
-        <div className="flex flex-wrap justify-center">
-          {pages.map((pageNum) => (
-            <canvas
-              key={`page-${pageNum}`}
-              id={`pdf-canvas-page-${pageNum}`}
-              className={`pdf-canvas ${
-                pageNum === currentPage ? "current-page" : ""
-              }`}
-              style={{ margin: "10px" }}
-              data-page-number={pageNum}
-            />
-          ))}
-        </div>
-      );
-    }
-
-    // Fallback
-    return <canvas ref={canvasRef} className="pdf-canvas" />;
-  }, [currentPage, numPages, viewMode]);
+    },
+    [pdfDocRef]
+  );
 
   // Render sidebar content
   const renderSidebarContent = useCallback(() => {
@@ -1131,51 +1124,58 @@ export const SimplePDFViewer = ({
     thumbnailsRendered
   ]);
 
-  // Function to render thumbnails
-  const renderThumbnail = useCallback(
-    async (pageNum: number, container: HTMLElement) => {
-      if (!pdfDocRef.current) return;
+  // Render the PDF viewer based on view mode
+  const renderPDFViewer = useCallback(() => {
+    if (viewMode === "continuous") {
+      return (
+        <>
+          {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
+            <canvas
+              key={`page-${pageNum}`}
+              id={`pdf-canvas-page-${pageNum}`}
+              className={`pdf-canvas ${
+                pageNum === currentPage ? "current-page" : ""
+              }`}
+              style={{
+                marginBottom: pageNum < numPages ? "20px" : "0",
+                scrollMargin: "100px",
+                scrollSnapAlign: "start",
+              }}
+              data-page-number={pageNum}
+            />
+          ))}
+        </>
+      );
+    } else if (viewMode === "twoPages") {
+      // For two pages view, we need to show pairs of pages
+      // Always start from an odd page number (1, 3, 5, etc.)
+      const startPage = currentPage % 2 === 0 ? currentPage - 1 : currentPage;
+      const pages = [startPage];
 
-      try {
-        // Get the page
-        const page = await pdfDocRef.current.getPage(pageNum);
-
-        // Create a small viewport for the thumbnail
-        const viewport = page.getViewport({ scale: 0.2, rotation: 0 });
-
-        // Create a canvas for this thumbnail
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-
-        if (!context) {
-          console.error("Failed to get canvas context for thumbnail");
-          return;
-        }
-
-        // Set canvas dimensions
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        // Render page to canvas
-        await page.render({
-          canvasContext: context,
-          viewport: viewport,
-        }).promise;
-
-        // Clear the container and append the canvas
-        while (container.firstChild) {
-          container.removeChild(container.firstChild);
-        }
-        container.appendChild(canvas);
-
-        // Mark this thumbnail as rendered
-        setThumbnailsRendered((prev) => [...prev, pageNum]);
-      } catch (err) {
-        console.error(`Error rendering thumbnail for page ${pageNum}:`, err);
+      if (startPage + 1 <= numPages) {
+        pages.push(startPage + 1);
       }
-    },
-    [pdfDocRef]
-  );
+
+      return (
+        <div className="flex flex-wrap justify-center">
+          {pages.map((pageNum) => (
+            <canvas
+              key={`page-${pageNum}`}
+              id={`pdf-canvas-page-${pageNum}`}
+              className={`pdf-canvas ${
+                pageNum === currentPage ? "current-page" : ""
+              }`}
+              style={{ margin: "10px" }}
+              data-page-number={pageNum}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    // Fallback
+    return <canvas ref={canvasRef} className="pdf-canvas" />;
+  }, [currentPage, numPages, viewMode]);
 
   // Clean up function to prevent memory leaks
   const cleanupPdf = useCallback(() => {

@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    base: "", // Empty string for relative paths
+    base: "/", // Use root path for assets
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),
@@ -33,6 +33,8 @@ export default defineConfig(({ mode }) => {
       hmr: {
         overlay: true, // Show errors as overlay
       },
+      // Ensure the server serves the index.html for all routes
+      historyApiFallback: true,
     },
     preview: {
       port: 4001,

@@ -36,8 +36,10 @@ const Index = () => {
     try {
       pdfSessionStorage.addDocument(newDoc);
 
+      // Generate the UUID outside of the tab object creation
+      const tabId = uuidv4();
       const newTab: PDFTab = {
-        id: uuidv4(),
+        id: tabId,
         document: newDoc,
         isActive: true,
       };

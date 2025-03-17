@@ -18,11 +18,20 @@ export function initPdfWorker() {
       // Set worker source to CDN
       pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_CDN;
       console.log("Using CDN PDF worker:", PDF_WORKER_CDN);
-      
       isWorkerInitialized = true;
     } catch (error) {
       console.error("Error initializing PDF worker:", error);
-      isWorkerInitialized = true;
+      // Fallback to a different CDN if the primary one fails
+      try {
+        const fallbackWorkerSrc = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.js`;
+        console.log("Trying fallback PDF worker:", fallbackWorkerSrc);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = fallbackWorkerSrc;
+        isWorkerInitialized = true;
+      } catch (fallbackError) {
+        console.error("Fallback PDF worker initialization failed:", fallbackError);
+        // Mark as initialized to prevent repeated attempts
+        isWorkerInitialized = true;
+      }
     }
   }
 }
@@ -52,6 +61,8 @@ export async function loadPdfDocument(url: string) {
       return pdfCache.get(url)!;
     }
 
+    console.log(`Loading PDF document from URL: ${url}`);
+
     // Create loading task with optimized options and timeout
     const loadingTask = pdfjsLib.getDocument({
       url,
@@ -68,6 +79,8 @@ export async function loadPdfDocument(url: string) {
       loadingTask.promise,
       timeoutPromise
     ]) as pdfjsLib.PDFDocumentProxy;
+
+    console.log(`PDF document loaded successfully: ${url}, pages: ${pdf.numPages}`);
 
     // Cache the document for future use
     pdfCache.set(url, pdf);
@@ -99,9 +112,10 @@ export function clearPdfCache(url?: string) {
 
 // Preload a PDF document in the background
 export function preloadPdfDocument(url: string) {
-  // Don't await - let it load in the background
-  loadPdfDocument(url).catch((err) => {
-    console.warn("Error preloading PDF:", err);
+  if (!url || pdfCache.has(url)) return;
+  console.log(`Preloading PDF document: ${url}`);
+  loadPdfDocument(url).catch(error => {
+    console.error(`Failed to preload PDF document ${url}:`, error);
   });
 }
 
